@@ -1,0 +1,46 @@
+---
+interface Props {
+  /** Pixel size of the square mark. */
+  size?: number;
+  /** Render the "Actuali" wordmark next to the mark. */
+  withWordmark?: boolean;
+  class?: string;
+}
+const { size = 28, withWordmark = true, class: className = "" } = Astro.props;
+---
+
+<span class={`inline-flex items-center gap-2 ${className}`}>
+  <svg
+    width={size}
+    height={size}
+    viewBox="0 0 32 32"
+    fill="none"
+    xmlns="http://www.w3.org/2000/svg"
+    aria-hidden="true"
+    class="shrink-0"
+  >
+    <defs>
+      <linearGradient
+        id="actuali-mark"
+        x1="0"
+        y1="0"
+        x2="32"
+        y2="32"
+        gradientUnits="userSpaceOnUse"
+      >
+        <stop stop-color="#7c3aed"></stop>
+        <stop offset="1" stop-color="#4a2270"></stop>
+      </linearGradient>
+    </defs>
+    <rect width="32" height="32" rx="8" fill="url(#actuali-mark)"></rect>
+    <rect x="5" y="9" width="22" height="3.2" rx="1.6" fill="#fff"></rect>
+    <rect x="5" y="15" width="22" height="9" rx="2.2" fill="#fff"></rect>
+  </svg>
+  {
+    withWordmark && (
+      <span class="text-lg font-semibold tracking-tight text-neutral-900">
+        Actuali
+      </span>
+    )
+  }
+</span>

@@ -1,0 +1,394 @@
+---
+import Layout from "../layouts/Layout.astro";
+
+const testflight = "https://testflight.apple.com/join/NsYntuXB";
+
+const screens = [
+  {
+    title: "Accounts at a glance",
+    body: "Net worth, balances, and which accounts are on-budget — the first thing you see.",
+    src: "/screenshots/accounts.png",
+    alt: "The Accounts tab showing net worth and account balances.",
+  },
+  {
+    title: "Every transaction, searchable",
+    body: "Scroll and search your full history, with cleared status and categories at a glance.",
+    src: "/screenshots/transactions.png",
+    alt: "An account's transaction list with recent entries.",
+  },
+  {
+    title: "Log in seconds",
+    body: "Expense, income, or transfer — a couple of taps and it syncs straight into your budget.",
+    src: "/screenshots/add-transaction.png",
+    alt: "The Add Transaction screen with type, amount, account, and category.",
+  },
+  {
+    title: "Budget at a glance",
+    body: "Category-by-category budgeted vs spent for the current month. No month-end surprises.",
+    src: "/screenshots/budget.png",
+    alt: "The Budget tab showing category totals for the current month.",
+  },
+  {
+    title: "Reports that matter",
+    body: "Net worth trends, cash flow, and spending vs. your average — a dashboard that syncs from your Actual server.",
+    src: "/screenshots/reports.png",
+    alt: "The Reports tab showing net worth and cash flow charts.",
+  },
+  {
+    title: "Your data, your server",
+    body: "Connect the Actual server you self-host — or tap Try the demo budget to explore with sample data first.",
+    src: "/screenshots/settings.png",
+    alt: "The Settings tab showing server connection options.",
+  },
+];
+
+// Lucide-style inline icons, keyed for the feature grids.
+const icons: Record<string, string> = {
+  transfer:
+    '<path d="M8 3 4 7l4 4"/><path d="M4 7h16"/><path d="m16 21 4-4-4-4"/><path d="M20 17H4"/>',
+  bolt: '<path d="M13 2 3 14h9l-1 8 10-12h-9l1-8Z"/>',
+  theme:
+    '<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>',
+  search:
+    '<circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/>',
+  server:
+    '<rect x="3" y="4" width="18" height="7" rx="2"/><rect x="3" y="13" width="18" height="7" rx="2"/><path d="M7 7.5h.01M7 16.5h.01"/>',
+  offline:
+    '<path d="M5 12.5a7 7 0 0 1 11-1.5"/><path d="M8.5 16a3.5 3.5 0 0 1 5 0"/><path d="M12 19.5h.01"/><path d="m3 3 18 18"/>',
+  sync: '<path d="M21 12a9 9 0 0 1-9 9 9 9 0 0 1-7.5-4M3 12a9 9 0 0 1 9-9 9 9 0 0 1 7.5 4"/><path d="M21 3v5h-5"/><path d="M3 21v-5h5"/>',
+  shield:
+    '<path d="M12 3 5 6v5c0 4.5 3 8 7 10 4-2 7-5.5 7-10V6l-7-3Z"/><path d="m9 12 2 2 4-4"/>',
+};
+
+const supported = [
+  {
+    icon: "transfer",
+    title: "Expenses, deposits, and transfers",
+    body: "Log any transaction type from your phone. Expenses against a budget category, deposits with a payee, and transfers between accounts — all sync back through Actual's CRDT engine.",
+  },
+  {
+    icon: "bolt",
+    title: "iOS Shortcuts",
+    body: 'Log a transaction with Siri, a Home Screen widget, or an automation. The "Log Transaction" shortcut takes amount, account, payee, and category and writes straight into your budget.',
+  },
+  {
+    icon: "theme",
+    title: "Light & Dark mode",
+    body: "Follows your system appearance by default, or pin it to Light or Dark from Settings. Tuned for both so your morning coffee log doesn't blind you.",
+  },
+  {
+    icon: "search",
+    title: "Search, accounts, and budgets",
+    body: "Browse and search your full transaction history, see balances and net worth across accounts, and check category-by-category budgeted vs spent for the current month.",
+  },
+];
+
+const privacy = [
+  {
+    icon: "server",
+    title: "Your data, your server",
+    body: "Actuali talks only to the Actual Budget server you configure. There's no cloud in the middle, no analytics pipeline, no data broker watching your latte habit.",
+  },
+  {
+    icon: "offline",
+    title: "Works offline",
+    body: "Every budget lives locally in SQLite. Record a transaction on the subway; it syncs back when you're on Wi-Fi.",
+  },
+  {
+    icon: "sync",
+    title: "CRDT sync",
+    body: "The same sync protocol Actual's desktop client uses. Edit on any device, in any order, and the merges just work.",
+  },
+  {
+    icon: "shield",
+    title: "No tracking. Full stop.",
+    body: "No analytics, no ads, no third-party SDKs.",
+  },
+];
+---
+
+<Layout title="Actuali — Native iOS for Actual Budget">
+  <!-- Hero -->
+  <section class="relative -mx-5 overflow-hidden px-5 sm:-mx-6 sm:px-6">
+    <!-- decorative glow -->
+    <div
+      class="pointer-events-none absolute inset-x-0 -top-32 -z-10 mx-auto h-[34rem] max-w-3xl rounded-full bg-gradient-to-b from-violet-300/40 via-violet-200/20 to-transparent blur-3xl"
+      aria-hidden="true"
+    >
+    </div>
+
+    <div
+      class="grid items-center gap-12 py-10 sm:py-16 lg:grid-cols-2 lg:gap-8"
+    >
+      <div class="space-y-6 text-center lg:text-left">
+        <p
+          class="inline-flex items-center gap-2 rounded-full border border-violet-200 bg-violet-50 px-3 py-1 text-xs font-medium text-violet-700"
+        >
+          <span class="relative flex h-1.5 w-1.5">
+            <span
+              class="absolute inline-flex h-full w-full animate-ping rounded-full bg-violet-400 opacity-75"
+            ></span>
+            <span class="relative inline-flex h-1.5 w-1.5 rounded-full bg-violet-500"
+            ></span>
+          </span>
+          Now in TestFlight
+        </p>
+        <h1
+          class="text-balance text-5xl font-semibold tracking-tight sm:text-6xl"
+        >
+          Your Actual Budget,
+          <span
+            class="bg-gradient-to-r from-violet-700 to-violet-500 bg-clip-text text-transparent"
+            >on iOS.</span
+          >
+        </h1>
+        <p
+          class="mx-auto max-w-xl text-balance text-lg text-neutral-600 lg:mx-0"
+        >
+          A fast, native iOS companion app for self-hosted
+          <a
+            href="https://actualbudget.org"
+            class="font-medium text-violet-700 underline decoration-violet-200 underline-offset-2 hover:decoration-violet-500"
+            >Actual Budget</a
+          >. Local-first, offline-capable, and built to feel right at home on
+          iPhone.
+        </p>
+        <div
+          class="flex flex-wrap items-center justify-center gap-3 pt-2 lg:justify-start"
+        >
+          <a
+            href={testflight}
+            class="inline-flex items-center gap-2 rounded-full bg-neutral-900 px-5 py-2.5 text-sm font-medium text-white shadow-sm transition hover:bg-neutral-700"
+          >
+            Join the TestFlight
+            <svg
+              width="16"
+              height="16"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2.2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              aria-hidden="true"><path d="M5 12h14" /><path d="m12 5 7 7-7 7"
+              /></svg
+            >
+          </a>
+          <a
+            href="/changelog"
+            class="inline-flex items-center gap-2 rounded-full border border-neutral-300 bg-white px-5 py-2.5 text-sm font-medium text-neutral-700 transition hover:border-neutral-400 hover:text-neutral-900"
+          >
+            What's new
+          </a>
+        </div>
+        <p class="text-sm text-neutral-500 lg:pl-1">
+          Free during TestFlight · No account required for the demo
+        </p>
+      </div>
+
+      <div class="relative mx-auto w-full max-w-[17rem] sm:max-w-xs">
+        <div
+          class="pointer-events-none absolute -inset-6 -z-10 rounded-full bg-violet-200/40 blur-2xl"
+          aria-hidden="true"
+        >
+        </div>
+        <div
+          class="overflow-hidden rounded-[2.75rem] border border-neutral-200 bg-white p-2 shadow-2xl ring-1 ring-black/5"
+        >
+          <img
+            src="/screenshots/accounts.png"
+            width="1320"
+            height="2868"
+            alt="The Accounts tab of the Actuali app."
+            class="block w-full rounded-[2.25rem]"
+            loading="eager"
+          />
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Quick check-ins -->
+  <section class="space-y-10 py-16">
+    <div class="space-y-3 text-center">
+      <p
+        class="text-sm font-semibold uppercase tracking-wider text-violet-600"
+      >
+        A glance and a tap
+      </p>
+      <h2 class="text-3xl font-semibold tracking-tight sm:text-4xl">
+        Designed for quick check-ins
+      </h2>
+      <p class="mx-auto max-w-xl text-neutral-600">
+        Three taps to log a coffee. A glance to see what's left in the budget.
+      </p>
+    </div>
+
+    <div class="grid gap-8 sm:grid-cols-2 lg:grid-cols-3">
+      {
+        screens.map((screen) => (
+          <div class="group space-y-4">
+            <div class="overflow-hidden rounded-3xl border border-neutral-200 bg-white shadow-lg transition duration-300 group-hover:-translate-y-1 group-hover:shadow-xl">
+              <img
+                src={screen.src}
+                width="1320"
+                height="2868"
+                alt={screen.alt}
+                class="block w-full"
+                loading="lazy"
+              />
+            </div>
+            <div class="space-y-1 px-1">
+              <h3 class="font-semibold">{screen.title}</h3>
+              <p class="text-sm text-neutral-600">{screen.body}</p>
+            </div>
+          </div>
+        ))
+      }
+    </div>
+  </section>
+
+  <!-- What's supported -->
+  <section class="space-y-10 py-16">
+    <div class="space-y-3 text-center">
+      <p class="text-sm font-semibold uppercase tracking-wider text-violet-600">
+        Built natively for iOS
+      </p>
+      <h2 class="text-3xl font-semibold tracking-tight sm:text-4xl">
+        What's supported
+      </h2>
+      <p class="mx-auto max-w-xl text-neutral-600">
+        The features you reach for on the go.
+      </p>
+    </div>
+
+    <div class="grid gap-4 sm:grid-cols-2">
+      {
+        supported.map((feature) => (
+          <div class="group rounded-2xl border border-neutral-200 bg-white p-6 transition duration-300 hover:-translate-y-1 hover:border-violet-200 hover:shadow-lg">
+            <div class="mb-4 inline-flex h-11 w-11 items-center justify-center rounded-xl bg-gradient-to-br from-violet-600 to-violet-800 text-white shadow-sm">
+              <svg
+                width="22"
+                height="22"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                aria-hidden="true"
+                set:html={icons[feature.icon]}
+              />
+            </div>
+            <h3 class="font-semibold">{feature.title}</h3>
+            <p class="mt-1.5 text-sm text-neutral-600">{feature.body}</p>
+          </div>
+        ))
+      }
+    </div>
+  </section>
+
+  <!-- Why self-host -->
+  <section class="space-y-10 py-16">
+    <div class="space-y-3 text-center">
+      <p class="text-sm font-semibold uppercase tracking-wider text-violet-600">
+        Local-first, private by default
+      </p>
+      <h2 class="text-3xl font-semibold tracking-tight sm:text-4xl">
+        Why self-host?
+      </h2>
+      <p class="mx-auto max-w-xl text-neutral-600">
+        Because your financial history is the worst thing to hand over to an
+        advertising company.
+      </p>
+    </div>
+
+    <div class="grid gap-4 sm:grid-cols-2">
+      {
+        privacy.map((feature) => (
+          <div class="group rounded-2xl border border-neutral-200 bg-white p-6 transition duration-300 hover:-translate-y-1 hover:border-violet-200 hover:shadow-lg">
+            <div class="mb-4 inline-flex h-11 w-11 items-center justify-center rounded-xl bg-gradient-to-br from-violet-600 to-violet-800 text-white shadow-sm">
+              <svg
+                width="22"
+                height="22"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                aria-hidden="true"
+                set:html={icons[feature.icon]}
+              />
+            </div>
+            <h3 class="font-semibold">{feature.title}</h3>
+            <p class="mt-1.5 text-sm text-neutral-600">
+              {feature.body}
+              {feature.icon === "shield" && (
+                <>
+                  {" "}
+                  See the{" "}
+                  <a
+                    href="/privacy"
+                    class="font-medium text-violet-700 underline decoration-violet-200 underline-offset-2 hover:decoration-violet-500"
+                  >
+                    privacy policy
+                  </a>
+                  .
+                </>
+              )}
+            </p>
+          </div>
+        ))
+      }
+    </div>
+  </section>
+
+  <!-- CTA -->
+  <section class="py-16">
+    <div
+      class="relative overflow-hidden rounded-3xl bg-gradient-to-br from-violet-700 via-violet-700 to-violet-900 px-6 py-14 text-center shadow-xl sm:px-12"
+    >
+      <div
+        class="pointer-events-none absolute -right-16 -top-16 h-56 w-56 rounded-full bg-white/10 blur-2xl"
+        aria-hidden="true"
+      >
+      </div>
+      <div
+        class="pointer-events-none absolute -bottom-20 -left-10 h-56 w-56 rounded-full bg-white/10 blur-2xl"
+        aria-hidden="true"
+      >
+      </div>
+      <div class="relative mx-auto max-w-lg space-y-4">
+        <h2 class="text-3xl font-semibold tracking-tight text-white sm:text-4xl">
+          Get early access
+        </h2>
+        <p class="text-violet-100">
+          Actuali is in open TestFlight. Install the latest build and check the
+          <a
+            href="/changelog"
+            class="font-medium text-white underline decoration-white/40 underline-offset-2 hover:decoration-white"
+            >changelog</a
+          >
+          to see what's new.
+        </p>
+        <div
+          class="flex flex-wrap items-center justify-center gap-3 pt-2"
+        >
+          <a
+            href={testflight}
+            class="inline-flex items-center gap-2 rounded-full bg-white px-6 py-3 text-sm font-semibold text-violet-800 shadow-sm transition hover:bg-violet-50"
+          >
+            Join the TestFlight
+          </a>
+          <a
+            href="/changelog"
+            class="inline-flex items-center gap-2 rounded-full border border-white/30 px-6 py-3 text-sm font-medium text-white transition hover:bg-white/10"
+          >
+            Changelog
+          </a>
+        </div>
+      </div>
+    </div>
+  </section>
+</Layout>

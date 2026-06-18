@@ -1,0 +1,67 @@
+---
+import Layout from "../layouts/Layout.astro";
+---
+
+<Layout title="Support · Actuali" description="Support and help for the Actuali app.">
+  <article class="mx-auto max-w-3xl space-y-6">
+    <header class="space-y-2">
+      <h1 class="text-3xl font-semibold tracking-tight sm:text-4xl">Support</h1>
+      <p class="text-neutral-500">
+        Help with Actuali, the native iOS client for self-hosted
+        <a href="https://actualbudget.org" class="underline hover:text-neutral-900"
+          >Actual Budget</a
+        >.
+      </p>
+    </header>
+
+    <section class="space-y-3">
+      <h2 class="text-xl font-semibold">Getting started</h2>
+      <p class="text-neutral-700">
+        Actuali connects to an Actual Budget server you host yourself. Enter your
+        server URL and password in the app's Settings to sync your budget. No
+        server yet? Open Settings and tap <strong>"Try the demo budget"</strong>
+        to explore every feature offline with sample data.
+      </p>
+    </section>
+
+    <section class="space-y-3">
+      <h2 class="text-xl font-semibold">Common questions</h2>
+      <ul class="list-disc space-y-2 pl-6 text-neutral-700">
+        <li>
+          <strong>Do I need my own server?</strong> Yes — Actuali is a companion
+          client for
+          <a href="https://actualbudget.org" class="underline hover:text-neutral-900"
+            >Actual Budget</a
+          >. Sync requires the Actual server you host. The demo budget works
+          without one.
+        </li>
+        <li>
+          <strong>Where is my data?</strong> Your budget lives locally on your
+          device and syncs only to the server you configure. Nothing is sent to
+          the developer. See the
+          <a href="/privacy" class="underline hover:text-neutral-900"
+            >privacy policy</a
+          >.
+        </li>
+        <li>
+          <strong>Does it work offline?</strong> Yes. Record transactions any
+          time; they sync back when you reconnect.
+        </li>
+        <li>
+          <strong>How do I disconnect?</strong> Tap "Disconnect" in Settings to
+          clear the local session and stored credentials.
+        </li>
+      </ul>
+    </section>
+
+    <section class="space-y-3">
+      <h2 class="text-xl font-semibold">Contact</h2>
+      <p class="text-neutral-700">
+        Found a bug or need help? Email
+        <a href="mailto:actuali@mfazz.com" class="underline hover:text-neutral-900"
+          >actuali@mfazz.com</a
+        > and we'll get back to you.
+      </p>
+    </section>
+  </article>
+</Layout>

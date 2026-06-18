@@ -1,0 +1,117 @@
+---
+import Layout from "../layouts/Layout.astro";
+
+const effectiveDate = "April 19, 2026";
+---
+
+<Layout title="Privacy Policy · Actuali" description="Privacy policy for the Actuali app.">
+  <article class="mx-auto max-w-3xl space-y-6">
+    <header class="space-y-2">
+      <h1 class="text-3xl font-semibold tracking-tight sm:text-4xl">Privacy Policy</h1>
+      <p class="text-sm text-neutral-500">Effective {effectiveDate}</p>
+    </header>
+
+    <section class="space-y-3">
+      <p class="text-neutral-700">
+        Actuali ("the app") is a native iOS client for
+        <a href="https://actualbudget.org" class="underline hover:text-neutral-900"
+          >Actual Budget</a
+        >, a local-first personal finance tool. This policy explains what
+        information the app handles and where it goes.
+      </p>
+      <p class="text-neutral-700">
+        <strong>Short version:</strong> the app collects no personal data for the
+        developer. Your financial data stays on your device and on the Actual Budget
+        server you configure. Nothing is sent anywhere else.
+      </p>
+    </section>
+
+    <section class="space-y-2">
+      <h2 class="text-xl font-semibold">Data stored on your device</h2>
+      <p class="text-neutral-700">
+        The app stores the following on the device so it can work offline:
+      </p>
+      <ul class="list-disc space-y-1 pl-6 text-neutral-700">
+        <li>
+          Your budget data (accounts, transactions, payees, categories, and
+          monthly budgets), held in a local SQLite database.
+        </li>
+        <li>
+          Your server URL, selected budget ID, and preferences, held in the
+          system defaults store.
+        </li>
+        <li>
+          Your authentication token for the server you configure, held in the
+          iOS Keychain.
+        </li>
+      </ul>
+      <p class="text-neutral-700">
+        This data never leaves your device except to synchronise with the
+        Actual Budget server you specify.
+      </p>
+    </section>
+
+    <section class="space-y-2">
+      <h2 class="text-xl font-semibold">Data sent over the network</h2>
+      <p class="text-neutral-700">
+        The app communicates only with the Actual Budget server URL you enter
+        in Settings. What it sends is whatever your Actual server requires:
+        your login credentials, encrypted or plain sync messages, and budget
+        file downloads. No other network destinations are contacted by the
+        app.
+      </p>
+      <p class="text-neutral-700">
+        The developer of the app does not operate a server, does not see your
+        traffic, and does not receive your data. If your server is
+        self-hosted, your data stays entirely between you and your server.
+      </p>
+    </section>
+
+    <section class="space-y-2">
+      <h2 class="text-xl font-semibold">Analytics, tracking, and ads</h2>
+      <p class="text-neutral-700">
+        The app contains no analytics, no advertising, and no third-party
+        tracking SDKs. It does not fingerprint your device or share identifiers
+        with anyone.
+      </p>
+    </section>
+
+    <section class="space-y-2">
+      <h2 class="text-xl font-semibold">Apple services</h2>
+      <p class="text-neutral-700">
+        If you install the app via the App Store or TestFlight, Apple collects
+        standard diagnostic information (crash logs, device model, OS version)
+        subject to Apple's own privacy policy and your iOS privacy settings.
+        The developer may view these aggregate reports through App Store
+        Connect to fix bugs. This is Apple's system, not a third-party SDK.
+      </p>
+    </section>
+
+    <section class="space-y-2">
+      <h2 class="text-xl font-semibold">Children</h2>
+      <p class="text-neutral-700">
+        The app is not directed to children under 13 and does not knowingly
+        collect information from them.
+      </p>
+    </section>
+
+    <section class="space-y-2">
+      <h2 class="text-xl font-semibold">Changes</h2>
+      <p class="text-neutral-700">
+        If this policy changes, the updated version will be posted at this URL
+        with a new effective date.
+      </p>
+    </section>
+
+    <section class="space-y-2">
+      <h2 class="text-xl font-semibold">Contact</h2>
+      <p class="text-neutral-700">
+        Questions about this policy or the app? Email
+        <a
+          href="mailto:actuali@mfazz.com"
+          class="underline hover:text-neutral-900">actuali@mfazz.com</a
+        >.
+      </p>
+    </section>
+  </article>
+</Layout>

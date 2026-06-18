@@ -1,0 +1,322 @@
+---
+import Layout from "../layouts/Layout.astro";
+
+interface Release {
+  version: string;
+  build: number;
+  date: string;
+  highlights: string[];
+}
+
+const releases: Release[] = [
+  {
+    version: "1.0",
+    build: 36,
+    date: "June 18, 2026",
+    highlights: [
+      "Demo: no server? Tap \"Try the demo budget\" on the Settings connection screen to explore the whole app — accounts, transactions, budgets, and a pre-built Reports dashboard — with realistic sample data, no account or server required.",
+      "Transactions: editing a transaction can no longer leave an orphaned copy behind via an unexpected transfer conversion.",
+    ],
+  },
+  {
+    version: "1.0",
+    build: 35,
+    date: "June 18, 2026",
+    highlights: [
+      "Shortcuts: fixed the \"Log Transaction\" Shortcut (e.g. when triggered by tapping an Apple Wallet card) intermittently failing with \"Account is no longer available.\" The account picker now resolves correctly even when the app is launched in the background.",
+    ],
+  },
+  {
+    version: "1.0",
+    build: 34,
+    date: "June 10, 2026",
+    highlights: [
+      "Support: removed the in-app support chat. To get in touch, use the new Contact and Report an Issue links in Settings, or send feedback directly from TestFlight.",
+    ],
+  },
+  {
+    version: "1.0",
+    build: 33,
+    date: "June 10, 2026",
+    highlights: [
+      "Sync: fixed a reliability issue where receiving duplicate sync messages could corrupt sync state and force a \"Reset Sync State\".",
+      "Transactions: amounts like 8.20 no longer occasionally save as 8.19 due to a rounding error.",
+      "Transactions: transfers now save atomically — if anything goes wrong mid-save, you no longer end up with half a transfer.",
+      "Reports: widgets now respect your currency setting instead of always assuming one currency.",
+      "Transactions: if deleting a transaction fails, the app now shows an alert instead of failing silently.",
+      "Performance: smoother scrolling and a snappier UI — database work now runs off the main thread, and the dashboard loads transactions once instead of four times.",
+      "Budget: improved month picker menu for switching months.",
+    ],
+  },
+  {
+    version: "1.0",
+    build: 32,
+    date: "May 26, 2026",
+    highlights: [
+      "Transactions: the keyboard 'Done' button is now semibold so it stands out against the dark keyboard accessory bar in dark mode.",
+    ],
+  },
+  {
+    version: "1.0",
+    build: 31,
+    date: "May 22, 2026",
+    highlights: [
+      "Reports: Monthly Spending widget now excludes off-budget accounts and income categories when computing the vs-average value, matching the webapp's built-in spending-report filter.",
+    ],
+  },
+  {
+    version: "1.0",
+    build: 30,
+    date: "May 22, 2026",
+    highlights: [
+      "Reports: Monthly Spending widget's vs-average value now matches the webapp's 'Spent Average MTD' — averages cumulative spending through today across the prior 3 months instead of full-month totals over the prior 12.",
+    ],
+  },
+  {
+    version: "1.0",
+    build: 29,
+    date: "May 21, 2026",
+    highlights: [
+      "Transactions: Account pickers now order on-budget accounts first, then off-budget, each group by the user-defined sort order (matching the webapp) instead of by insert order.",
+    ],
+  },
+  {
+    version: "1.0",
+    build: 28,
+    date: "May 21, 2026",
+    highlights: [
+      "Transactions: the amount and notes fields now show a Done button above the keyboard so it can be dismissed without tapping another field.",
+    ],
+  },
+  {
+    version: "1.0",
+    build: 27,
+    date: "May 15, 2026",
+    highlights: [
+      "Budget: categories and groups marked hidden in the webapp are now hidden in the iOS budget view too.",
+    ],
+  },
+  {
+    version: "1.0",
+    build: 26,
+    date: "May 15, 2026",
+    highlights: [
+      "Budget: category groups and categories now appear in the user-defined order (matching the webapp's drag-and-drop sort) instead of alphabetically.",
+    ],
+  },
+  {
+    version: "1.0",
+    build: 25,
+    date: "May 15, 2026",
+    highlights: [
+      "Reports: Net Worth and Summary widgets configured with YYYY-MM time frames (which is how the webapp stores most ranges, e.g., \"2025-08\" / \"2026-04\") now resolve to the correct date range instead of falling back to the current year. The Net Worth chart now matches the webapp's window.",
+      "Reports: \"Spent All Time\" and other widgets using mode 'full' now include the current month. Previously a residual stored end of \"2026-04\" capped the range at April 30 and excluded May spending; matching upstream's behavior, the stored end is now ignored for full ranges and the range always extends through the current month.",
+      "Reports: Summary widgets now display the absolute value with color indicating direction (red for spending, green for income), matching the webapp instead of showing a redundant minus sign.",
+      "Reports: \"Coming soon\" placeholders for Formula widgets are now collapsed into the same top banner as Custom Reports.",
+      "Settings: new \"Copy widget metadata\" button under Reports for sharing dashboard configuration when a widget renders unexpectedly.",
+    ],
+  },
+  {
+    version: "1.0",
+    build: 24,
+    date: "May 15, 2026",
+    highlights: [
+      "Reports: replaced individual \"Coming soon: custom-report\" placeholder cards with a single banner at the top of the dashboard. Other unsupported widget types (sankey, calendar, age-of-money, formula, crossover, budget-analysis) still show as placeholders since those are less common.",
+    ],
+  },
+  {
+    version: "1.0",
+    build: 23,
+    date: "May 15, 2026",
+    highlights: [
+      "Reports: Summary and Spending widgets that filter by 'transfer' (e.g., 'Spent This Month' excludes transfers) now work. Previously the 'transfer' field wasn't recognized and the boolean value couldn't decode, so every transaction was rejected and the widget showed $0.",
+      "Reports: 'sliding-window' time frames now slide forward as configured (a 1-month window stored as April 2026 → April 2026 correctly resolves to May 1 → May 31 when today is May 15). Previously sliding-window mapped to year-to-date which mixed up the math.",
+      "Reports: widgets with no time frame now default to the current month, matching the webapp.",
+    ],
+  },
+  {
+    version: "1.0",
+    build: 22,
+    date: "May 15, 2026",
+    highlights: [
+      "Tab bar: reordered to Accounts, Budget, Add, Reports, Settings.",
+      "Reports: aggregations now use split children instead of split parents so category-filtered widgets (e.g., Spent This Month with category conditions) match transactions correctly. Split parents have no category, so the prior behavior silently excluded everything when conditions filtered by category.",
+      "Settings: new Reports → Diagnostics screen lists raw dashboard widget metadata plus current-month transaction stats. Useful when a widget isn't showing the value you expect.",
+    ],
+  },
+  {
+    version: "1.0",
+    build: 21,
+    date: "May 15, 2026",
+    highlights: [
+      "Reports: fixed Summary and Spending widgets that were showing $0.00 when the underlying widget used 'oneOf'/'notOneOf' conditions (e.g., excluding income categories). The filter now also supports 'contains'/'doesNotContain', and unknown ops pass through instead of silently rejecting every transaction.",
+      "Navigation: removed the standalone Transactions tab — open an account from the Accounts tab to see its transactions. Reports is now visible directly in the tab bar instead of hidden under \"More\".",
+    ],
+  },
+  {
+    version: "1.0",
+    build: 20,
+    date: "May 14, 2026",
+    highlights: [
+      "Reports: new Reports tab renders the dashboard you've configured in the Actual Budget webapp. View-only. Summary, Net Worth, Cash Flow, Spending, and Markdown widgets render with real data; other widget types (Custom Reports, Sankey, Calendar, Age of Money, Formula, Crossover, Budget Analysis) appear as \"Coming soon\" placeholders for now.",
+      "Sync: dashboard widgets and saved custom reports now sync from the server, even though the iOS app doesn't render every widget type yet.",
+    ],
+  },
+  {
+    version: "1.0",
+    build: 19,
+    date: "May 12, 2026",
+    highlights: [
+      "Edit transaction: tapping the Payee field now selects the existing text, so you can replace it just by typing.",
+      "New & edit transactions: the amount field works like a register — it starts at 0.00 and digits shift in from the right (type 1, 2, 0 → 0.01, 0.12, 1.20). Tap \".\" any time to switch to standard decimal entry (1, ., 0 → 1.0).",
+    ],
+  },
+  {
+    version: "1.0",
+    build: 18,
+    date: "May 5, 2026",
+    highlights: [
+      "Sync: error messages are now human-readable. \"The operation couldn't be completed (Actuali.SyncError error 3.)\" becomes \"Local data has drifted from the server and couldn't reconcile after several attempts.\"",
+      "Settings: when sync is in an error state, a Reset Sync State button now appears under Sync Now. It clears the local sync marker and re-adopts the server's view of the budget, recovering devices that got stuck divergent before the build 17 fix landed.",
+    ],
+  },
+  {
+    version: "1.0",
+    build: 17,
+    date: "May 4, 2026",
+    highlights: [
+      "Sync: fixed a sync failure caused by a recent Actual server release adding a new column (custom_upcoming_length) to the schedules table. The app now applies known upstream schema migrations on launch, and unknown new columns are skipped instead of aborting the whole sync so a future server change won't break things again.",
+      "Settings: the Sync section now shows the underlying error message under the status row when a sync fails, so it's easier to tell why.",
+    ],
+  },
+  {
+    version: "1.0",
+    build: 16,
+    date: "May 4, 2026",
+    highlights: [
+      "Budget page: category balances now correctly roll over from prior months. If you budgeted $50 last month and only spent $40, the leftover $10 is added to this month's balance — matching what the Actual desktop app shows. Respects the per-category carryover flag for envelope and tracking budgets.",
+    ],
+  },
+  {
+    version: "1.0",
+    build: 15,
+    date: "May 3, 2026",
+    highlights: [
+      "Rules engine: your Actual Budget rules now run on transactions logged from the iOS app and the Log Transaction Shortcut. Rename rules like \"imported_payee CONTAINS Woolworths → set payee = Woolworths\" trigger before the row is written, instead of being silently ignored.",
+      "Transactions logged from the Shortcut now keep the original merchant string in imported_payee so \"imported_payee CONTAINS X\" rules can match.",
+      "Supported rule ops: is, isNot, contains, doesNotContain, oneOf, notOneOf, matches, gt/gte/lt/lte, isbetween, isapprox, plus set / prepend-notes / append-notes actions across pre, default, and post stages.",
+    ],
+  },
+  {
+    version: "1.0",
+    build: 14,
+    date: "May 3, 2026",
+    highlights: [
+      "Server connection: auto-prepends https:// when you leave it off, and shows an example URL under the field.",
+    ],
+  },
+  {
+    version: "1.0",
+    build: 13,
+    date: "May 3, 2026",
+    highlights: [
+      "Settings: appearance picker — choose System, Light, or Dark.",
+    ],
+  },
+  {
+    version: "1.0",
+    build: 12,
+    date: "May 3, 2026",
+    highlights: [
+      "New transactions: added Transfer type to move money between accounts in one tap.",
+      "Log Transaction Shortcut: replaced the in-Shortcut confirmation with a quiet success banner that auto-dismisses — no more 'Done' button.",
+    ],
+  },
+  {
+    version: "1.0",
+    build: 11,
+    date: "May 1, 2026",
+    highlights: [
+      "New transactions: searchable category picker that auto-focuses the search field on open.",
+      "New transactions: payee field autocompletes from your existing payees.",
+      "New transactions: category auto-fills from the most recent transaction for the chosen payee.",
+    ],
+  },
+  {
+    version: "1.0",
+    build: 10,
+    date: "April 29, 2026",
+    highlights: [
+      "Log Transaction Shortcut: added a Cleared toggle (defaults on) so Shortcuts can record cleared or uncleared entries.",
+    ],
+  },
+  {
+    version: "1.0",
+    build: 9,
+    date: "April 28, 2026",
+    highlights: [
+      "Siri & Shortcuts: new Log Transaction app intent — record an amount, payee, account, and category by voice or from the Shortcuts editor.",
+      "Shortcuts editor shows the parameters inline so the action reads like a sentence.",
+      "Smarter merchant names: strips processor prefixes and store numbers from Apple Pay-style strings before saving.",
+      "Auto-categorization: Log Transaction guesses the category from the most recent transaction for that payee.",
+    ],
+  },
+  {
+    version: "1.0",
+    build: 7,
+    date: "April 21, 2026",
+    highlights: [
+      "Transactions: swipe a row to edit or delete.",
+      "Account detail: hides the redundant account name on rows so amounts and payees have more room.",
+      "In-app support chat: ask questions or report bugs without leaving the app; replies show up as a tab badge.",
+      "Sync: drops echoed messages instead of erroring on duplicate inserts.",
+    ],
+  },
+];
+---
+
+<Layout
+  title="Changelog · Actuali"
+  description="What's new in each TestFlight build of Actuali."
+>
+  <article class="mx-auto max-w-3xl space-y-10">
+    <header class="space-y-2">
+      <h1 class="text-3xl font-semibold tracking-tight sm:text-4xl">Changelog</h1>
+      <p class="text-neutral-600">
+        What shipped in each TestFlight build. Newest first.
+      </p>
+      <p class="text-sm text-neutral-500">
+        Not on TestFlight yet?{" "}
+        <a
+          href="https://testflight.apple.com/join/NsYntuXB"
+          class="underline hover:text-neutral-900">Join here</a
+        >.
+      </p>
+    </header>
+
+    <ol class="space-y-8">
+      {
+        releases.map((release) => (
+          <li class="rounded-2xl border border-neutral-200 bg-white p-6 transition hover:border-violet-200 hover:shadow-md">
+            <div class="flex flex-wrap items-baseline justify-between gap-2">
+              <h2 class="text-lg font-semibold tracking-tight">
+                Version {release.version}{" "}
+                <span class="font-normal text-neutral-500">
+                  (build {release.build})
+                </span>
+              </h2>
+              <p class="rounded-full bg-neutral-100 px-2.5 py-0.5 text-xs font-medium text-neutral-500">
+                {release.date}
+              </p>
+            </div>
+            <ul class="mt-3 list-disc space-y-1.5 pl-5 text-neutral-700">
+              {release.highlights.map((item) => (
+                <li>{item}</li>
+              ))}
+            </ul>
+          </li>
+        ))
+      }
+    </ol>
+  </article>
+</Layout>
