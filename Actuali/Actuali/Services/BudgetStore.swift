@@ -126,6 +126,29 @@ final class BudgetStore: ObservableObject {
     /// Fall back to a direct database read when the cache is empty so account
     /// resolution is correct on a cold launch. Returns `[]` only when there is
     /// genuinely no budget/database available.
+    /// Ensure the saved budget is fully loaded — specifically that `syncClient`
+    /// is created and configured — before a headless write.
+    ///
+    /// `LogTransactionIntent` runs with `openAppWhenRun = false`, so the app can
+    /// be launched headless and reach the write path before the background
+    /// `loadLocalBudget` started in `init()` has wired `syncClient`. Writing then
+    /// throws `.syncNotConfigured` ("Couldn't save transaction"). Await the
+    /// in-flight load here (or start one if none is running) so the write path
+    /// sees a fully configured store.
+    func ensureBudgetReady() async {
+        if syncClient != nil { return }
+        if let loadTask {
+            await loadTask.value
+            return
+        }
+        // No in-flight load (e.g. a freshly spawned headless process where the
+        // init() Task hasn't been retained). Start one and await it.
+        guard let budgetId = currentBudgetId, fileManager.budgetExists(budgetId) else { return }
+        let task = Task { await loadLocalBudget(budgetId) }
+        loadTask = task
+        await task.value
+    }
+
     func accountsForIntent() async -> [Account] {
         if !accounts.isEmpty { return accounts }
         do {
@@ -146,6 +169,11 @@ final class BudgetStore: ObservableObject {
 
     private var syncClient: SyncClient?
     private var syncStateCancellable: AnyCancellable?
+
+    /// Handle to the in-flight `loadLocalBudget` started in `init()`. App Intents
+    /// can run before that background load has wired `syncClient`, so the headless
+    /// write path awaits this via `ensureBudgetReady()`.
+    private var loadTask: Task<Void, Never>?
 
     struct RemoteBudget: Identifiable {
         let id: String
@@ -195,7 +223,7 @@ final class BudgetStore: ObservableObject {
 
         // Load local budget if available
         if let budgetId = currentBudgetId, fileManager.budgetExists(budgetId) {
-            Task {
+            loadTask = Task {
                 await loadLocalBudget(budgetId)
             }
         }

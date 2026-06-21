@@ -49,6 +49,10 @@ struct LogTransactionIntent: AppIntent {
 
         // Resolve account: explicit parameter, else defaultAccountId, else error.
         let store = BudgetStore.shared
+        // Headless launch (openAppWhenRun = false) can reach the write path before
+        // init()'s background load has wired syncClient; wait for it so the write
+        // doesn't fail with "Sync not configured".
+        await store.ensureBudgetReady()
         let resolvedAccountId: String
         if let account {
             resolvedAccountId = account.id
