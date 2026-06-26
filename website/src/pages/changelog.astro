@@ -117,16 +117,22 @@ function cleanReleaseBody(md: string): string {
 }
 
 const cutoff = parseVersion(ARCHIVE_MAX_VERSION);
+// Authenticate the fetch when a token is available. Cloudflare's build runners
+// share egress IPs, so the unauthenticated GitHub limit (60 req/hr/IP) is often
+// already exhausted and the fetch 403s — silently dropping us to the archive.
+// A token raises the limit to 5,000 req/hr. Set GITHUB_TOKEN as a build env var
+// in Cloudflare (Workers & Pages > Settings > Variables and Secrets).
+const githubToken = process.env.GITHUB_TOKEN;
 let githubReleases: GithubRelease[] = [];
 try {
+  const headers: Record<string, string> = {
+    Accept: "application/vnd.github+json",
+    "User-Agent": "actuali-website",
+  };
+  if (githubToken) headers.Authorization = `Bearer ${githubToken}`;
   const res = await fetch(
     `https://api.github.com/repos/${REPO}/releases?per_page=100`,
-    {
-      headers: {
-        Accept: "application/vnd.github+json",
-        "User-Agent": "actuali-website",
-      },
-    }
+    { headers }
   );
   if (res.ok) {
     const data = (await res.json()) as Array<{
@@ -146,10 +152,16 @@ try {
         bodyHtml: renderMarkdown(cleanReleaseBody(r.body || "")),
       }));
   } else {
-    console.warn(`Changelog: GitHub releases fetch failed (${res.status}); showing archive only.`);
+    // Fail the build loudly. A silent fallback here is what shipped an
+    // archive-only changelog (missing v1.0.3) while the deploy looked green.
+    const hint = res.status === 403 && !githubToken
+      ? " (unauthenticated rate limit — set the GITHUB_TOKEN build env var)"
+      : "";
+    throw new Error(`GitHub releases fetch failed (${res.status})${hint}`);
   }
 } catch (err) {
-  console.warn("Changelog: GitHub releases fetch errored; showing archive only.", err);
+  console.error("Changelog: GitHub releases fetch failed.", err);
+  throw err;
 }
 
 const archivedReleases: Release[] = [
