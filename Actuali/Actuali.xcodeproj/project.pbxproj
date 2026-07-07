@@ -456,6 +456,7 @@
 				DEVELOPMENT_TEAM = GJGY9A384M;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = "Info-Release.plist";
 				INFOPLIST_KEY_CFBundleDisplayName = Actuali;
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
 				INFOPLIST_KEY_LSRequiresIPhoneOS = YES;
