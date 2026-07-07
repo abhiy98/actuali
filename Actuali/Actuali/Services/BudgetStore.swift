@@ -104,6 +104,11 @@ final class BudgetStore: ObservableObject {
     @Published var syncState: SyncState = .idle
     @Published var lastSyncTime: Date?
 
+    /// Whether we may WRITE payee_locations CRDT messages (server >= 26.4.0,
+    /// probed via `GET /info` after each budget load). Persisted per server
+    /// URL so offline launches keep the last known answer.
+    @Published private(set) var payeeLocationWritesEnabled = false
+
     /// Currency code for formatting (e.g., "USD", "EUR", "GBP")
     /// Persisted to UserDefaults, defaults to "USD"
     @Published var currencyCode: String = "USD" {
@@ -156,6 +161,21 @@ final class BudgetStore: ObservableObject {
     /// underlying `database` remains private to enforce that writes go through
     /// store methods.
     var databaseForLogger: BudgetDatabase? { database }
+
+    /// Shared provider — one position cache for the whole app.
+    static let locationProvider = LocationProvider()
+
+    /// Nearby payees for the add-transaction form. Every failure path
+    /// (no database, query error) degrades to "no suggestions".
+    func fetchNearbyPayees(latitude: Double, longitude: Double) async -> [NearbyPayee] {
+        guard let database else { return [] }
+        do {
+            return try await database.fetchNearbyPayees(latitude: latitude, longitude: longitude)
+        } catch {
+            logger.error("fetchNearbyPayees failed: \(error.localizedDescription, privacy: .public)")
+            return []
+        }
+    }
 
     /// Accounts for App Intents (the Log Transaction Shortcut).
     ///
@@ -600,6 +620,8 @@ final class BudgetStore: ObservableObject {
                     self?.syncState = state
                 }
 
+            refreshPayeeLocationSupport()
+
         } catch {
             // If a concurrent load replaced our database mid-fetch, this
             // failure belongs to a stale load — don't clobber the winner's
@@ -609,6 +631,29 @@ final class BudgetStore: ObservableObject {
         }
 
         isLoading = false
+    }
+
+    /// Seed `payeeLocationWritesEnabled` from the last cached answer for the
+    /// configured server, then probe `GET /info` in the background. A failed
+    /// probe (unreachable, 404, parse error) keeps the cached answer; a
+    /// successful one overwrites it. Never blocks or fails budget load.
+    private func refreshPayeeLocationSupport() {
+        let capturedURL = serverURL
+        let key = "payeeLocationWritesEnabled_\(capturedURL)"
+        payeeLocationWritesEnabled = UserDefaults.standard.bool(forKey: key)
+        Task { [weak self] in
+            guard let self else { return }
+            guard let version = await self.serverClient.fetchServerVersion() else {
+                return  // capabilities unknown — keep the cached answer
+            }
+            // The user may have switched servers while the probe was in
+            // flight; a stale answer must not flip the flag for — or be
+            // persisted under — a server other than the one probed.
+            guard self.serverURL == capturedURL else { return }
+            let supported = ServerVersion.supportsPayeeLocations(version)
+            self.payeeLocationWritesEnabled = supported
+            UserDefaults.standard.set(supported, forKey: key)
+        }
     }
 
     func refreshData() async {
@@ -956,6 +1001,9 @@ final class BudgetStore: ObservableObject {
                     importedPayee: payeeName
                 )
                 try await createTransaction(transaction)
+                if let payeeId {
+                    recordPayeeLocationIfAppropriate(payeeId: payeeId)
+                }
             }
         }
     }
@@ -970,6 +1018,51 @@ final class BudgetStore: ObservableObject {
             return try await findOrCreatePayee(name: name).id
         } catch {
             throw BudgetStoreError.payeeCreationFailed(error.localizedDescription)
+        }
+    }
+
+    /// Record only when no existing location for the payee is within 500 m
+    /// (upstream dedupe rule).
+    static func shouldRecordLocation(at position: Coordinates, existing: [PayeeLocation]) -> Bool {
+        !existing.contains { location in
+            LocationUtils.calculateDistanceMeters(
+                lat1: position.latitude, lon1: position.longitude,
+                lat2: location.latitude, lon2: location.longitude
+            ) <= LocationUtils.defaultMaxDistanceMeters
+        }
+    }
+
+    /// Fire-and-forget: attach the current position to `payeeId`. All guards
+    /// and failures collapse to "do nothing" — recording a location must
+    /// never affect the save that triggered it.
+    func recordPayeeLocationIfAppropriate(payeeId: String) {
+        guard payeeLocationWritesEnabled else { return }
+        Task { [weak self] in
+            guard let self else { return }
+            let provider = Self.locationProvider
+            guard await provider.authorizationStatus() == .granted,
+                  let position = try? await provider.currentPosition(),
+                  LocationUtils.isValidCoordinate(
+                      latitude: position.latitude, longitude: position.longitude),
+                  let database = self.database,
+                  let existing = try? await database.fetchPayeeLocations(payeeId: payeeId),
+                  Self.shouldRecordLocation(at: position, existing: existing),
+                  let syncClient = self.syncClient else {
+                return
+            }
+            let location = PayeeLocation(
+                id: UUID().uuidString,
+                payeeId: payeeId,
+                latitude: position.latitude,
+                longitude: position.longitude,
+                createdAt: Int64(Date().timeIntervalSince1970 * 1000)
+            )
+            do {
+                try await syncClient.createPayeeLocation(location)
+                logger.debug("Recorded payee location for \(payeeId, privacy: .private)")
+            } catch {
+                logger.error("Failed to record payee location: \(error.localizedDescription, privacy: .public)")
+            }
         }
     }
 
