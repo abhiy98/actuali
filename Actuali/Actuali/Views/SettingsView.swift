@@ -31,8 +31,9 @@ struct SettingsView: View {
     @State private var transactionNotificationsEnabled = TransactionNotificationSettings().isEnabled
     @State private var notificationPermissionDenied = false
 
-    /// Persists the opt-in, then requests permission / schedules on enable
-    /// and cancels the pending refresh task on disable.
+    /// Persists the opt-in and requests permission on enable. Background
+    /// refresh runs regardless of this toggle (it keeps data fresh for
+    /// everyone); only notification posting is gated on it.
     private var transactionNotificationsBinding: Binding<Bool> {
         Binding(
             get: { transactionNotificationsEnabled },
@@ -42,7 +43,6 @@ struct SettingsView: View {
                 if enabled {
                     Task { await enableTransactionNotifications() }
                 } else {
-                    BackgroundRefresh.cancelPending()
                     notificationPermissionDenied = false
                 }
             }
@@ -53,9 +53,6 @@ struct SettingsView: View {
         let center = UNUserNotificationCenter.current()
         let granted = (try? await center.requestAuthorization(options: [.alert, .sound])) ?? false
         notificationPermissionDenied = !granted
-        if granted {
-            BackgroundRefresh.scheduleIfEnabled()
-        }
     }
 
     /// Permission can change in the Settings app while we're backgrounded;

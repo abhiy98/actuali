@@ -71,7 +71,7 @@ struct ActualiApp: App {
                         }
                     }
                     if newPhase == .background {
-                        BackgroundRefresh.scheduleIfEnabled()
+                        BackgroundRefresh.schedule()
                     }
                 }
         }

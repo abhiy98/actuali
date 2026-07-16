@@ -4,6 +4,14 @@ import os
 
 private let notifLog = Logger(subsystem: "com.mfazz.Actuali", category: "NewTransactionNotifier")
 
+/// Seam over UNUserNotificationCenter so notify's gating is testable.
+protocol NotificationPosting {
+    func requestAuthorization(options: UNAuthorizationOptions) async throws -> Bool
+    func add(_ request: UNNotificationRequest) async throws
+}
+
+extension UNUserNotificationCenter: NotificationPosting {}
+
 /// Posts one local notification per background-refresh cycle summarizing
 /// transactions that arrived via sync (from NewTransactionDetector).
 enum NewTransactionNotifier {
@@ -19,11 +27,16 @@ enum NewTransactionNotifier {
     /// userInfo key carrying the [String] of new transaction ids.
     static let transactionIdsKey = "transactionIds"
 
+    /// Background refresh calls this unconditionally after every sync; the
+    /// user's notification opt-in is enforced here, not at scheduling time,
+    /// so the refresh itself can keep data fresh for everyone.
     @MainActor
-    static func notify(about transactions: [Transaction], currencyCode: String) async {
+    static func notify(about transactions: [Transaction], currencyCode: String,
+                       settings: TransactionNotificationSettings = TransactionNotificationSettings(),
+                       center: NotificationPosting = UNUserNotificationCenter.current()) async {
+        guard settings.isEnabled else { return }
         guard let request = makeRequest(for: transactions, currencyCode: currencyCode) else { return }
 
-        let center = UNUserNotificationCenter.current()
         let granted: Bool
         do {
             granted = try await center.requestAuthorization(options: [.alert, .sound])

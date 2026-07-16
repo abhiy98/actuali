@@ -86,4 +86,51 @@ struct NewTransactionNotifierTests {
         #expect(first?.identifier != nil)
         #expect(first?.identifier == second?.identifier)
     }
+
+    private func makeSettings(enabled: Bool) -> TransactionNotificationSettings {
+        let name = "NewTransactionNotifierTests-\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: name)!
+        defaults.removePersistentDomain(forName: name)
+        let settings = TransactionNotificationSettings(defaults: defaults)
+        settings.isEnabled = enabled
+        return settings
+    }
+
+    /// Background refresh always runs (fresh data on open); the opt-in only
+    /// gates the notification itself. Opted out, notify must not touch
+    /// Notification Center at all — not even to ask for permission.
+    @Test func notifyPostsNothingWhenNotificationsDisabled() async {
+        let center = NotificationCenterSpy()
+
+        await NewTransactionNotifier.notify(
+            about: [makeTransaction(id: "t1")], currencyCode: "USD",
+            settings: makeSettings(enabled: false), center: center)
+
+        #expect(center.authorizationRequested == false)
+        #expect(center.added.isEmpty)
+    }
+
+    @Test func notifyPostsWhenNotificationsEnabled() async {
+        let center = NotificationCenterSpy()
+
+        await NewTransactionNotifier.notify(
+            about: [makeTransaction(id: "t1")], currencyCode: "USD",
+            settings: makeSettings(enabled: true), center: center)
+
+        #expect(center.added.map(\.identifier) == [NewTransactionNotifier.requestIdentifier])
+    }
+}
+
+private final class NotificationCenterSpy: NotificationPosting {
+    var authorizationRequested = false
+    var added: [UNNotificationRequest] = []
+
+    func requestAuthorization(options: UNAuthorizationOptions) async throws -> Bool {
+        authorizationRequested = true
+        return true
+    }
+
+    func add(_ request: UNNotificationRequest) async throws {
+        added.append(request)
+    }
 }

@@ -11,10 +11,11 @@ protocol BackgroundTaskRequesting {
 
 extension BGTaskScheduler: BackgroundTaskRequesting {}
 
-/// Periodic background refresh that will drive transaction notifications:
-/// iOS wakes the app, we sync headlessly and notify about new transactions.
-/// The task handler is a stub until the headless sync lands; this layer only
-/// owns registration, scheduling, and keeping the refresh chain alive.
+/// Periodic background refresh: iOS wakes the app, we sync headlessly so the
+/// app opens with fresh data, and notify about new transactions when the user
+/// has opted in (the opt-in is enforced in NewTransactionNotifier, not here).
+/// Runs for everyone; the OS-level Background App Refresh switch is the off
+/// button.
 enum BackgroundRefresh {
 
     /// Must stay listed in BGTaskSchedulerPermittedIdentifiers (both Info
@@ -29,20 +30,6 @@ enum BackgroundRefresh {
         let request = BGAppRefreshTaskRequest(identifier: taskIdentifier)
         request.earliestBeginDate = now.addingTimeInterval(minimumInterval)
         return request
-    }
-
-    /// Schedule only when the user has opted into transaction notifications —
-    /// the sole reason this refresh exists.
-    static func scheduleIfEnabled(settings: TransactionNotificationSettings = TransactionNotificationSettings(),
-                                  using scheduler: BackgroundTaskRequesting = BGTaskScheduler.shared,
-                                  now: Date = Date()) {
-        guard settings.isEnabled else { return }
-        schedule(using: scheduler, now: now)
-    }
-
-    /// Called when the user turns transaction notifications off.
-    static func cancelPending() {
-        BGTaskScheduler.shared.cancel(taskRequestWithIdentifier: taskIdentifier)
     }
 
     static func schedule(using scheduler: BackgroundTaskRequesting = BGTaskScheduler.shared,
@@ -67,12 +54,6 @@ enum BackgroundRefresh {
     }
 
     static func handle(_ task: BGAppRefreshTask) {
-        // A task submitted before the user disabled notifications can still
-        // fire; treat it as a no-op and let the chain die.
-        guard TransactionNotificationSettings().isEnabled else {
-            task.setTaskCompleted(success: true)
-            return
-        }
         // Reschedule first so the chain survives regardless of the outcome.
         schedule()
         bgLog.info("Background refresh fired, starting headless sync")
