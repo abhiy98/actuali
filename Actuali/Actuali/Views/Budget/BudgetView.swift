@@ -25,7 +25,8 @@ enum BudgetColumn {
     /// Cell text for the budget table: a plain grouped number without the
     /// currency symbol, like the PWA's budget table — "USD 1,850.00" in
     /// every cell would drown the category names on a phone.
-    static func text(_ cents: Int) -> String {
+    static func text(_ cents: Int, balancesHidden: Bool) -> String {
+        if balancesHidden { return "••••••" }
         (Double(cents) / 100.0).formatted(.number.precision(.fractionLength(2)))
     }
 }
@@ -67,27 +68,27 @@ struct BudgetView: View {
                                 if let toBudget = budget.toBudget {
                                     SummaryStat(
                                         label: "To Budget",
-                                        value: BudgetColumn.text(toBudget),
+                                        value: BudgetColumn.text(toBudget, balancesHidden: budgetStore.hideBalances),
                                         valueColor: toBudget >= 0 ? .green : .red
                                     )
                                 } else {
                                     SummaryStat(
                                         label: "Income",
-                                        value: BudgetColumn.text(budget.totalIncome)
+                                        value: BudgetColumn.text(budget.totalIncome, balancesHidden: budgetStore.hideBalances)
                                     )
                                 }
                                 Spacer(minLength: 4)
                                 SummaryColumn(
                                     label: "Budgeted",
-                                    value: BudgetColumn.text(budget.totalBudgeted)
+                                    value: BudgetColumn.text(budget.totalBudgeted, balancesHidden: budgetStore.hideBalances)
                                 )
                                 SummaryColumn(
                                     label: "Spent",
-                                    value: BudgetColumn.text(budget.totalOutflow)
+                                    value: BudgetColumn.text(budget.totalOutflow, balancesHidden: budgetStore.hideBalances)
                                 )
                                 SummaryColumn(
                                     label: "Balance",
-                                    value: BudgetColumn.text(budget.totalAvailable),
+                                    value: BudgetColumn.text(budget.totalAvailable, balancesHidden: budgetStore.hideBalances),
                                     valueColor: budget.totalAvailable >= 0 ? .green : .red
                                 )
                             }
@@ -158,7 +159,7 @@ struct BudgetView: View {
                                 HStack {
                                     Text(budget.incomeCategories.first?.groupName ?? "Income")
                                     Spacer()
-                                    Text("Received \(budgetStore.formatCurrency(budget.totalIncome))")
+                                    Text("Received \(budgetStore.displayBalance(budget.totalIncome))")
                                 }
                             }
                         }
@@ -210,7 +211,9 @@ struct BudgetView: View {
                 ToolbarItem(placement: .principal) {
                     MonthPicker(selectedMonth: $selectedMonth)
                 }
-                ToolbarItem(placement: .topBarTrailing) {
+                ToolbarItemGroup(placement: .topBarTrailing) {
+                    BalanceVisibilityButton()
+
                     Button {
                         selectedMonth = Self.shiftMonth(selectedMonth, by: 1)
                     } label: {
@@ -317,7 +320,7 @@ struct CategoryBudgetRow: View {
                     onEditBudget(category)
                 } label: {
                     BudgetAmountPill(
-                        text: BudgetColumn.text(category.budgeted),
+                        text: BudgetColumn.text(category.budgeted, balancesHidden: budgetStore.hideBalances),
                         dimmed: category.budgeted == 0
                     )
                 }
@@ -327,14 +330,14 @@ struct CategoryBudgetRow: View {
                     onShowTransactions(category, category.month)
                 } label: {
                     BudgetAmountPill(
-                        text: BudgetColumn.text(category.spent),
+                        text: BudgetColumn.text(category.spent, balancesHidden: budgetStore.hideBalances),
                         dimmed: category.spent == 0
                     )
                 }
                 .buttonStyle(.borderless)
                 .accessibilityLabel("Transactions for \(category.categoryName) in \(MonthPicker.title(for: category.month))")
                 BudgetAmountPill(
-                    text: BudgetColumn.text(category.available),
+                    text: BudgetColumn.text(category.available, balancesHidden: budgetStore.hideBalances),
                     color: category.isOverspent ? .red : (category.available == 0 ? .secondary : .green)
                 )
             }
@@ -455,11 +458,11 @@ struct IncomeCategoryRow: View {
                 Text(income.categoryName)
                     .font(.body)
                 Spacer()
-                Text(budgetStore.formatCurrency(income.received))
+                Text(budgetStore.displayBalance(income.received))
                     .foregroundColor(income.received > 0 ? .green : .secondary)
             }
             if showsBudgeted {
-                Text("Budgeted: \(budgetStore.formatCurrency(income.budgeted))")
+                Text("Budgeted: \(budgetStore.displayBalance(income.budgeted))")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
