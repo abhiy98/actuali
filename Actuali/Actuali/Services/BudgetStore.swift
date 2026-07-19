@@ -1733,6 +1733,9 @@ final class BudgetStore: ObservableObject {
             lastSyncTime = Date()
             logger.debug("sync() completed, refreshing data...")
             await refreshDataOnly()
+            // Anything that just synced is on screen now — advance the
+            // notification watermark so background refresh won't re-announce it.
+            _ = await detectNewTransactionsForNotification()
         }
         await work.value
     }
@@ -1757,6 +1760,48 @@ final class BudgetStore: ObservableObject {
         await client.automaticSync()
         lastSyncTime = Date()
         await refreshDataOnly()
+        // Anything that just synced is on screen now — advance the
+        // notification watermark so background refresh won't re-announce it.
+        _ = await detectNewTransactionsForNotification()
+    }
+
+    /// Headless sync for background refresh. On a cold background launch the
+    /// scene never activates, so ensure the saved budget is loaded (same path
+    /// App Intents use) before syncing. Returns false when no budget is
+    /// configured; true means a loaded budget attempted a sync — the server
+    /// may still have been unreachable (SyncClient logs and retries later).
+    func syncInBackground() async -> Bool {
+        await ensureBudgetReady()
+        guard let client = syncClient else {
+            logger.debug("syncInBackground() skipped - no budget configured")
+            return false
+        }
+        await client.automaticSync()
+        lastSyncTime = Date()
+        await refreshDataOnly()
+        return true
+    }
+
+    /// Single transaction by id (cache first, then database) for notification
+    /// tap-through. Nil when it no longer exists.
+    func transaction(withId id: String) async -> Transaction? {
+        if let cached = transactions.first(where: { $0.id == id }) { return cached }
+        guard let database else { return nil }
+        return (try? await database.fetchTransaction(id: id)) ?? nil
+    }
+
+    /// Transactions that arrived via sync since the last check (advances the
+    /// notification watermark). Errors are logged, not thrown — a failed
+    /// detection must never take down the background refresh.
+    func detectNewTransactionsForNotification() async -> [Transaction] {
+        guard let database, let syncClient, let budgetId = currentBudgetId else { return [] }
+        do {
+            return try await NewTransactionDetector().detectNewTransactions(
+                in: database, budgetId: budgetId, localNode: syncClient.nodeId)
+        } catch {
+            logger.error("New-transaction detection failed: \(error.localizedDescription, privacy: .public)")
+            return []
+        }
     }
 
     // MARK: - Budget
