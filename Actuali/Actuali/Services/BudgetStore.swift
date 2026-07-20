@@ -195,11 +195,10 @@ final class BudgetStore: ObservableObject {
     }
 
     /// One consistent-width replacement keeps masked amounts visually stable
-    /// while avoiding a numeric value in the UI. Wavy dashes echo Actual's
-    /// privacy mask (which renders amounts in the squiggly "Redacted Script"
-    /// font) while inheriting each label's font, size, and color; U+FE0E
-    /// pins them to text presentation so they never render as emoji.
-    static let hiddenBalanceText = "\u{3030}\u{FE0E}\u{3030}\u{FE0E}\u{3030}\u{FE0E}"
+    /// while avoiding a numeric value in the UI. Bullets read as the familiar
+    /// passcode-style "hidden" treatment while inheriting each label's font,
+    /// size, and color.
+    static let hiddenBalanceText = "\u{2022}\u{2022}\u{2022}\u{2022}"
 
     /// Formats a standard currency amount unless the privacy mask is enabled.
     func displayBalance(_ cents: Int) -> String {
