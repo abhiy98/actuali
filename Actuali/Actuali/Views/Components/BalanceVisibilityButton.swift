@@ -2,8 +2,9 @@ import SwiftUI
 
 /// A shared navigation-bar control for the app-wide balance privacy setting.
 ///
-/// All three financial tabs read the same `BudgetStore` instance. Keeping the
-/// toggle here prevents their icons, labels, or behavior from drifting apart.
+/// Every tab reads the same `BudgetStore` instance, so toggling here masks
+/// amounts everywhere at once. Keeping the control in one view prevents the
+/// tabs' icons, labels, or behavior from drifting apart.
 struct BalanceVisibilityButton: View {
     @EnvironmentObject private var budgetStore: BudgetStore
 
@@ -14,7 +15,7 @@ struct BalanceVisibilityButton: View {
             Image(systemName: budgetStore.hideBalances ? "eye.slash" : "eye")
         }
         .accessibilityLabel(budgetStore.hideBalances ? "Show balances" : "Hide balances")
-        .accessibilityHint("Applies to Accounts, Budget, and Reports")
+        .accessibilityHint("Hides amounts across the app")
     }
 }
 

@@ -179,7 +179,10 @@ final class BudgetStore: ObservableObject {
         }
     }
 
-    /// Whether monetary values are obscured in Accounts, Budget, and Reports.
+    /// Whether monetary values are obscured wherever the app displays them:
+    /// account balances, the budget table, reports, and transaction lists.
+    /// Screens where the user is actively working with an amount (entering a
+    /// transaction, reconciling against the bank) intentionally stay visible.
     ///
     /// This is a device-level privacy preference, rather than budget data: a
     /// person may want to hide amounts before handing their phone to someone,
@@ -192,18 +195,21 @@ final class BudgetStore: ObservableObject {
     }
 
     /// One consistent-width replacement keeps masked amounts visually stable
-    /// while avoiding a numeric value in the UI.
-    var hiddenBalanceText: String { "••••••" }
+    /// while avoiding a numeric value in the UI. Wavy dashes echo Actual's
+    /// privacy mask (which renders amounts in the squiggly "Redacted Script"
+    /// font) while inheriting each label's font, size, and color; U+FE0E
+    /// pins them to text presentation so they never render as emoji.
+    static let hiddenBalanceText = "\u{3030}\u{FE0E}\u{3030}\u{FE0E}\u{3030}\u{FE0E}"
 
     /// Formats a standard currency amount unless the privacy mask is enabled.
     func displayBalance(_ cents: Int) -> String {
-        hideBalances ? hiddenBalanceText : formatCurrency(cents)
+        hideBalances ? Self.hiddenBalanceText : formatCurrency(cents)
     }
 
     /// Equivalent to `displayBalance(_:)` for reports that intentionally omit
     /// cents in their normal presentation.
     func displayBalanceWholeUnits(_ cents: Int) -> String {
-        hideBalances ? hiddenBalanceText : formatCurrencyWholeUnits(cents)
+        hideBalances ? Self.hiddenBalanceText : formatCurrencyWholeUnits(cents)
     }
 
     /// Whether transaction saves record the payee's location (GH #24).
