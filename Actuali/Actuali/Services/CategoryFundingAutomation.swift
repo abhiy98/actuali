@@ -74,11 +74,7 @@ final class CategoryFundingAutomationMonitor: ObservableObject {
 
     func processCurrentSnapshot(using budgetStore: BudgetStore) {
         reset(for: budgetStore.currentBudgetId)
-        guard !budgetStore.transactions.isEmpty || hasBaseline else {
-            // Keep an empty budget unbaselined so its first transaction is still
-            // treated as new rather than being mistaken for historical data.
-            return
-        }
+        guard budgetStore.dataVersion > 0 else { return }
 
         guard !hasBaseline else {
             let newTransactions = budgetStore.transactions.filter { !seenTransactionIds.contains($0.id) }
@@ -95,9 +91,9 @@ final class CategoryFundingAutomationMonitor: ObservableObject {
             return
         }
 
-        // The first non-empty snapshot after a budget load is history, not
-        // automation input. Opening a budget must never retroactively fund old
-        // transactions.
+        // The first snapshot after a budget load is history, not automation
+        // input. Opening a budget must never retroactively fund old
+        // transactions. This also correctly baselines an empty budget.
         seenTransactionIds = Set(budgetStore.transactions.map(\.id))
         hasBaseline = true
     }
