@@ -87,7 +87,7 @@ struct HistoryView: View {
             }
             .presentationDetents([.medium])
         }
-        .alert("Couldn't Undo", isPresented: Binding(
+        .alert(historyStore.errorTitle, isPresented: Binding(
             get: { historyStore.errorMessage != nil },
             set: { if !$0 { historyStore.clearError() } }
         )) {
