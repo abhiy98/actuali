@@ -60,6 +60,12 @@ struct SettingsView: View {
                     } label: {
                         Label("Bank Sync (SimpleFIN & Wallet)", systemImage: "building.columns")
                     }
+
+                    NavigationLink {
+                        HistoryView()
+                    } label: {
+                        Label("History", systemImage: "clock.arrow.circlepath")
+                    }
                 }
 
                 Section("Information") {
@@ -74,9 +80,6 @@ struct SettingsView: View {
             .navigationTitle("More")
             .contentMargins(.horizontal, 6, for: .scrollContent)
         }
-        // Keep the store-wide loading indicator above the navigation stack so
-        // operations started from any destination remain covered, not only
-        // work launched from the hub form.
         .overlay {
             if budgetStore.isLoading {
                 ProgressView()
