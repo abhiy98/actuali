@@ -276,6 +276,39 @@ struct HistoryStoreTests {
         }
     }
 
+    @Test func coalescesSplitEditPublicationsForSameParent() {
+        let suite = "HistoryStoreTests-\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let store = HistoryStore(defaults: defaults)
+
+        let oldParent = transaction(id: "parent", isParent: true)
+        let newParent = transaction(id: "parent", amount: -1200, isParent: true)
+        let oldChild = transaction(id: "child", amount: -400, parentId: "parent")
+        let newChild = transaction(id: "child", amount: -700, parentId: "parent")
+
+        store.recordSnapshots(
+            budgetID: "budget",
+            kind: .edited,
+            before: [HistoryTransactionSnapshot(oldParent)],
+            after: [HistoryTransactionSnapshot(newParent)]
+        )
+        store.recordSnapshots(
+            budgetID: "budget",
+            kind: .edited,
+            before: [HistoryTransactionSnapshot(newParent), HistoryTransactionSnapshot(oldChild)],
+            after: [HistoryTransactionSnapshot(newParent), HistoryTransactionSnapshot(newChild)]
+        )
+
+        #expect(store.actions.count == 1)
+        #expect(store.actions[0].before.map(\.id) == ["parent", "child"])
+        #expect(store.actions[0].after.map(\.id) == ["parent", "child"])
+        #expect(store.actions[0].before.first?.amount == oldParent.amount)
+        #expect(store.actions[0].after.first?.amount == newParent.amount)
+        #expect(store.actions[0].before.last?.amount == oldChild.amount)
+        #expect(store.actions[0].after.last?.amount == newChild.amount)
+    }
+
     @Test func transferAndSplitDeletionTitlesAreExplicit() {
         let source = transaction(id: "source")
         let target = transaction(id: "target")
