@@ -6,6 +6,8 @@ final class HistoryObserver {
     private var cancellables = Set<AnyCancellable>()
     private var previousBudgetID: String?
     private var previous: [String: Transaction] = [:]
+    private var previousSplitChildren: [String: [String: Transaction]] = [:]
+    private var consumeTask: Task<Void, Never>?
 
     init(store: BudgetStore) {
         previousBudgetID = store.currentBudgetId
@@ -16,37 +18,73 @@ final class HistoryObserver {
                 if budgetID != self.previousBudgetID {
                     self.previousBudgetID = budgetID
                     self.previous = [:]
+                    self.previousSplitChildren = [:]
+                    // Wait for the corresponding transaction publication. The
+                    // old budget's rows can still be in memory when the budget
+                    // ID changes, so consuming here could establish the wrong
+                    // baseline and create a phantom History event.
+                    return
                 }
-                self.consume(store)
+                self.enqueueConsume(store: store, budgetID: budgetID, transactions: store.transactions)
             }
             .store(in: &cancellables)
 
         store.$transactions
-            .sink { [weak self, weak store] _ in
+            .sink { [weak self, weak store] transactions in
                 guard let self, let store else { return }
-                self.consume(store)
+                self.enqueueConsume(store: store, budgetID: store.currentBudgetId, transactions: transactions)
             }
             .store(in: &cancellables)
 
-        consume(store)
+        enqueueConsume(store: store, budgetID: store.currentBudgetId, transactions: store.transactions)
     }
 
-    private func consume(_ store: BudgetStore) {
-        guard let budgetID = store.currentBudgetId else {
+    private func enqueueConsume(
+        store: BudgetStore,
+        budgetID: String?,
+        transactions: [Transaction]
+    ) {
+        let previousTask = consumeTask
+        consumeTask = Task { @MainActor [weak self, weak store] in
+            _ = await previousTask?.result
+            guard let self, let store else { return }
+            await self.consume(store, budgetID: budgetID, transactions: transactions)
+        }
+    }
+
+    private func consume(
+        _ store: BudgetStore,
+        budgetID: String?,
+        transactions: [Transaction]
+    ) async {
+        guard let budgetID else {
             previous = [:]
+            previousSplitChildren = [:]
             return
         }
 
-        let current = Dictionary(uniqueKeysWithValues: store.transactions.map { ($0.id, $0) })
+        let current = Dictionary(uniqueKeysWithValues: transactions.map { ($0.id, $0) })
+        let currentSplitChildren = await fetchSplitChildren(
+            for: current.values.filter(\.isParent),
+            using: store
+        )
+
         guard !previous.isEmpty else {
             previous = current
+            previousSplitChildren = currentSplitChildren
             previousBudgetID = budgetID
             return
         }
 
         if let pendingUndo = HistoryStore.pendingUndo {
             previous = current
-            if pendingUndo.budgetID == budgetID && Self.matchesPendingUndo(pendingUndo, current: current) {
+            previousSplitChildren = currentSplitChildren
+            if pendingUndo.budgetID == budgetID,
+               await Self.matchesPendingUndo(
+                    pendingUndo,
+                    current: current,
+                    splitChildren: currentSplitChildren
+               ) {
                 HistoryStore.finishUndoRecording()
             }
             return
@@ -54,6 +92,7 @@ final class HistoryObserver {
 
         if HistoryStore.recordingSuppressed || store.isBankSyncing {
             previous = current
+            previousSplitChildren = currentSplitChildren
             return
         }
 
@@ -64,30 +103,142 @@ final class HistoryObserver {
             return !Self.samePersistedState(old, $0)
         }
 
-        if !added.isEmpty, removed.isEmpty, changed.isEmpty {
-            HistoryStore.shared.record(budgetID: budgetID, kind: .created, before: [], after: added)
-        } else if added.isEmpty, !removed.isEmpty, changed.isEmpty {
+        let previousParentIDs = Set(previous.values.filter(\.isParent).map(\.id))
+        let currentParentIDs = Set(current.values.filter(\.isParent).map(\.id))
+        let splitParentIDs = previousParentIDs.union(currentParentIDs)
+
+        var handledRootIDs = Set<String>()
+        for parentID in splitParentIDs.sorted() {
+            let oldParent = previous[parentID]?.isParent == true ? previous[parentID] : nil
+            let newParent = current[parentID]?.isParent == true ? current[parentID] : nil
+            let oldChildren = previousSplitChildren[parentID] ?? [:]
+            let newChildren = currentSplitChildren[parentID] ?? [:]
+            let rootChanged = oldParent.map { old in
+                guard let newParent else { return true }
+                return !Self.samePersistedState(old, newParent)
+            } ?? (newParent != nil)
+            let childrenChanged = !Self.samePersistedState(oldChildren, newChildren)
+
+            guard rootChanged || childrenChanged else { continue }
+
+            handledRootIDs.insert(parentID)
+            switch (oldParent, newParent) {
+            case (nil, let newParent?):
+                let after = [HistoryTransactionSnapshot(newParent)]
+                    + newChildren.values
+                        .sorted { Self.sortKey($0) < Self.sortKey($1) }
+                        .map(HistoryTransactionSnapshot.init)
+                HistoryStore.shared.recordSnapshots(
+                    budgetID: budgetID,
+                    kind: .created,
+                    before: [],
+                    after: after
+                )
+
+            case (let oldParent?, nil):
+                let before = [HistoryTransactionSnapshot(oldParent)]
+                    + oldChildren.values
+                        .sorted { Self.sortKey($0) < Self.sortKey($1) }
+                        .map(HistoryTransactionSnapshot.init)
+                let after = before.map { snapshot in
+                    var tombstoned = snapshot
+                    tombstoned.tombstone = true
+                    return tombstoned
+                }
+                HistoryStore.shared.recordSnapshots(
+                    budgetID: budgetID,
+                    kind: .deleted,
+                    before: before,
+                    after: after
+                )
+
+            case (let oldParent?, let newParent?):
+                let allChildIDs = oldChildren.keys.union(newChildren.keys).sorted()
+                var before = [HistoryTransactionSnapshot(oldParent)]
+                var after = [HistoryTransactionSnapshot(newParent)]
+
+                for childID in allChildIDs {
+                    switch (oldChildren[childID], newChildren[childID]) {
+                    case (let oldChild?, let newChild?):
+                        before.append(HistoryTransactionSnapshot(oldChild))
+                        after.append(HistoryTransactionSnapshot(newChild))
+                    case (nil, let newChild?):
+                        var absent = HistoryTransactionSnapshot(newChild)
+                        absent.tombstone = true
+                        before.append(absent)
+                        after.append(HistoryTransactionSnapshot(newChild))
+                    case (let oldChild?, nil):
+                        before.append(HistoryTransactionSnapshot(oldChild))
+                        var tombstoned = HistoryTransactionSnapshot(oldChild)
+                        tombstoned.tombstone = true
+                        after.append(tombstoned)
+                    case (nil, nil):
+                        break
+                    }
+                }
+
+                HistoryStore.shared.recordSnapshots(
+                    budgetID: budgetID,
+                    kind: .edited,
+                    before: before,
+                    after: after
+                )
+            }
+        }
+
+        let remainingAdded = added.filter { !handledRootIDs.contains($0.id) }
+        let remainingRemoved = removed.filter { !handledRootIDs.contains($0.id) }
+        let remainingChanged = changed.filter { !handledRootIDs.contains($0.id) }
+
+        if !remainingAdded.isEmpty, remainingRemoved.isEmpty, remainingChanged.isEmpty {
+            HistoryStore.shared.record(budgetID: budgetID, kind: .created, before: [], after: remainingAdded)
+        } else if remainingAdded.isEmpty, !remainingRemoved.isEmpty, remainingChanged.isEmpty {
             HistoryStore.shared.record(
                 budgetID: budgetID,
                 kind: .deleted,
-                before: removed,
-                after: removed.map { Self.tombstoned($0) }
+                before: remainingRemoved,
+                after: remainingRemoved.map { Self.tombstoned($0) }
             )
-        } else if added.isEmpty, removed.isEmpty, !changed.isEmpty {
-            let before = changed.compactMap { previous[$0.id] }
-            HistoryStore.shared.record(budgetID: budgetID, kind: .edited, before: before, after: changed)
+        } else if remainingAdded.isEmpty, remainingRemoved.isEmpty, !remainingChanged.isEmpty {
+            let before = remainingChanged.compactMap { previous[$0.id] }
+            HistoryStore.shared.record(budgetID: budgetID, kind: .edited, before: before, after: remainingChanged)
         }
 
         previous = current
+        previousSplitChildren = currentSplitChildren
         previousBudgetID = budgetID
     }
 
-    private static func matchesPendingUndo(_ pending: HistoryStore.PendingUndo, current: [String: Transaction]) -> Bool {
-        let expectedByID = Dictionary(uniqueKeysWithValues: pending.expected.map { ($0.id, $0) })
-        for expected in expectedByID.values {
-            guard let actual = current[expected.id], expected.matchesLiveTransaction(actual) else { return false }
+    private func fetchSplitChildren(
+        for parents: some Collection<Transaction>,
+        using store: BudgetStore
+    ) async -> [String: [String: Transaction]] {
+        var result: [String: [String: Transaction]] = [:]
+        for parent in parents {
+            let children = await store.fetchSplitChildren(parentId: parent.id)
+            result[parent.id] = Dictionary(uniqueKeysWithValues: children.map { ($0.id, $0) })
         }
-        return pending.removedIDs.allSatisfy { current[$0] == nil }
+        return result
+    }
+
+    private static func matchesPendingUndo(
+        _ pending: HistoryStore.PendingUndo,
+        current: [String: Transaction],
+        splitChildren: [String: [String: Transaction]]
+    ) async -> Bool {
+        var live = current
+        for children in splitChildren.values {
+            for child in children.values {
+                live[child.id] = child
+            }
+        }
+
+        for expected in pending.expected {
+            guard let actual = live[expected.id], expected.matchesLiveTransaction(actual) else {
+                return false
+            }
+        }
+        return pending.removedIDs.allSatisfy { live[$0] == nil }
     }
 
     private static func tombstoned(_ transaction: Transaction) -> Transaction {
@@ -96,13 +247,22 @@ final class HistoryObserver {
         return copy
     }
 
-    // Payee/category display names, transfer display data, split portions,
-    // sort order, and insert-only fields that normal reads cannot reproduce
-    // are intentionally excluded. Remote edits are still valid History events.
-    // ponytail: observing the published snapshot keeps this change small and
-    // avoids duplicating every BudgetStore mutation path. Ceiling: mixed
-    // topology edits (for example adding/removing split lines) are not logged.
     private static func samePersistedState(_ lhs: Transaction, _ rhs: Transaction) -> Bool {
         HistoryTransactionSnapshot(lhs).matchesLiveTransaction(rhs)
+    }
+
+    private static func samePersistedState(
+        _ lhs: [String: Transaction],
+        _ rhs: [String: Transaction]
+    ) -> Bool {
+        guard lhs.count == rhs.count else { return false }
+        for (id, old) in lhs {
+            guard let new = rhs[id], samePersistedState(old, new) else { return false }
+        }
+        return true
+    }
+
+    private static func sortKey(_ transaction: Transaction) -> (Double, String) {
+        (transaction.sortOrder ?? 0, transaction.id)
     }
 }
