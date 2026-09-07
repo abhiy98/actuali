@@ -216,4 +216,37 @@ struct HistoryStoreTests {
         )
         #expect(deletedSplit.title == "Deleted split transaction")
     }
+
+    @Test func coalescesTransferLegsIntoOneHistoryAction() {
+        let suite = "HistoryStoreTests-\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let store = HistoryStore(defaults: defaults)
+
+        let source = transaction(id: "source", amount: -5000)
+        let target = transaction(id: "target", amount: 5000)
+        var sourceSnapshot = HistoryTransactionSnapshot(source)
+        var targetSnapshot = HistoryTransactionSnapshot(target)
+        sourceSnapshot.transferId = target.id
+        targetSnapshot.transferId = source.id
+
+        store.recordSnapshots(
+            budgetID: "budget",
+            kind: .created,
+            before: [],
+            after: [sourceSnapshot]
+        )
+        store.recordSnapshots(
+            budgetID: "budget",
+            kind: .created,
+            before: [],
+            after: [targetSnapshot]
+        )
+
+        #expect(store.actions.count == 1)
+        #expect(store.actions[0].after.count == 2)
+        #expect(store.actions[0].after.contains { $0.id == source.id })
+        #expect(store.actions[0].after.contains { $0.id == target.id })
+        #expect(store.actions[0].title == "Created transfer")
+    }
 }
