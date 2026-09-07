@@ -3,7 +3,12 @@ import Testing
 
 @MainActor
 struct HistoryStoreTests {
-    private func transaction(id: String, amount: Int = -1000) -> Transaction {
+    private func transaction(
+        id: String,
+        amount: Int = -1000,
+        isParent: Bool = false,
+        parentId: String? = nil
+    ) -> Transaction {
         Transaction(
             id: id,
             accountId: "account",
@@ -11,14 +16,14 @@ struct HistoryStoreTests {
             amount: amount,
             payeeId: "payee",
             payeeName: "Groceries",
-            categoryId: "category",
-            categoryName: "Food",
+            categoryId: isParent ? nil : "category",
+            categoryName: isParent ? nil : "Food",
             notes: nil,
             cleared: false,
             reconciled: false,
             transferId: nil,
-            isParent: false,
-            parentId: nil,
+            isParent: isParent,
+            parentId: parentId,
             tombstone: false,
             sortOrder: nil,
             importedPayee: nil
@@ -64,6 +69,79 @@ struct HistoryStoreTests {
         second.load(budgetID: "budget")
         #expect(second.actions.count == 1)
         #expect(second.actions.first?.after.first?.id == "persisted")
+    }
+
+    @Test func recordsFullSplitSnapshots() {
+        let suite = "HistoryStoreTests-\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let store = HistoryStore(defaults: defaults)
+
+        let oldParent = transaction(id: "parent", isParent: true)
+        let oldChild = transaction(id: "child", amount: -400, parentId: "parent")
+        let newParent = transaction(id: "parent", amount: -1200, isParent: true)
+        let newChild = transaction(id: "child", amount: -700, parentId: "parent")
+        let addedChild = transaction(id: "added", amount: -500, parentId: "parent")
+
+        var absentAddedChild = HistoryTransactionSnapshot(addedChild)
+        absentAddedChild.tombstone = true
+        var removedChild = HistoryTransactionSnapshot(oldChild)
+        removedChild.tombstone = true
+
+        store.recordSnapshots(
+            budgetID: "budget",
+            kind: .edited,
+            before: [
+                HistoryTransactionSnapshot(oldParent),
+                HistoryTransactionSnapshot(oldChild),
+                absentAddedChild
+            ],
+            after: [
+                HistoryTransactionSnapshot(newParent),
+                HistoryTransactionSnapshot(newChild),
+                HistoryTransactionSnapshot(removedChild)
+            ]
+        )
+
+        let action = store.actions[0]
+        #expect(action.before.contains { $0.id == "child" && !$0.tombstone })
+        #expect(action.before.contains { $0.id == "added" && $0.tombstone })
+        #expect(action.after.contains { $0.id == "added" && !$0.tombstone })
+        #expect(action.after.contains { $0.id == "child" && $0.tombstone })
+    }
+
+    @Test func splitTitleRecognizesCollapseFromBeforeState() {
+        let parent = HistoryTransactionSnapshot(transaction(id: "parent", isParent: true))
+        let collapsed = HistoryTransactionSnapshot(transaction(id: "parent"))
+        let action = HistoryAction(
+            id: "collapse",
+            createdAt: Date(),
+            budgetID: "budget",
+            kind: .edited,
+            before: [parent],
+            after: [collapsed],
+            status: .applied
+        )
+
+        #expect(action.title == "Edited split transaction")
+    }
+
+    @Test func deletedActionsRepresentAbsentRowsAfterDeletion() {
+        let source = transaction(id: "source")
+        var tombstone = HistoryTransactionSnapshot(source)
+        tombstone.tombstone = true
+        let action = HistoryAction(
+            id: "deleted",
+            createdAt: Date(),
+            budgetID: "budget",
+            kind: .deleted,
+            before: [HistoryTransactionSnapshot(source)],
+            after: [tombstone],
+            status: .applied
+        )
+
+        #expect(action.after[0].tombstone)
+        #expect(action.before[0].tombstone == false)
     }
 
     @Test func undoneActionsCannotBeUndone() {
