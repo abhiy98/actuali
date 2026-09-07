@@ -12,13 +12,14 @@ import UserNotifications
 struct ActualiApp: App {
     @UIApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     @StateObject private var budgetStore = BudgetStore.shared
-    @State private var historyObserver: HistoryObserver?
+    private let historyObserver: HistoryObserver
     @Environment(\.scenePhase) private var scenePhase
 
     init() {
         // BGTaskScheduler requires all handlers registered before launch ends.
         // (The notification delegate is set in AppDelegate.)
         BackgroundRefresh.register()
+        historyObserver = HistoryObserver(store: BudgetStore.shared)
         #if DEBUG
         // Clean slate so BackgroundRefreshRowUITests always starts at "Never"
         // regardless of what earlier runs left in UserDefaults.
@@ -47,9 +48,6 @@ struct ActualiApp: App {
                 .environmentObject(budgetStore)
                 .preferredColorScheme(budgetStore.appearanceMode.colorScheme)
                 .task {
-                    if historyObserver == nil {
-                        historyObserver = HistoryObserver(store: budgetStore)
-                    }
                     #if DEBUG
                     if CommandLine.arguments.contains("-loadDemoData") {
                         await budgetStore.loadDemoData(
