@@ -65,4 +65,19 @@ struct HistoryStoreTests {
         #expect(second.actions.count == 1)
         #expect(second.actions.first?.after.first?.id == "persisted")
     }
+
+    @Test func undoneActionsCannotBeUndone() {
+        let action = HistoryAction(
+            id: "undone",
+            createdAt: Date(),
+            budgetID: "budget",
+            kind: .edited,
+            before: [],
+            after: [HistoryTransactionSnapshot(transaction(id: "tx"))],
+            status: .undone
+        )
+
+        let store = HistoryStore(defaults: UserDefaults(suiteName: "HistoryStoreTests-\(UUID().uuidString)")!)
+        #expect(store.canUndo(action) == false)
+    }
 }
