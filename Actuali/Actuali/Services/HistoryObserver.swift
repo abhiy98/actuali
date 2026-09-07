@@ -111,18 +111,14 @@ final class HistoryObserver {
         for parentID in splitParentIDs.sorted() {
             let oldRoot = previous[parentID]
             let newRoot = current[parentID]
-            let oldParent = oldRoot?.isParent == true ? oldRoot : nil
-            let newParent = newRoot?.isParent == true ? newRoot : nil
             let oldChildren = previousSplitChildren[parentID] ?? [:]
             let newChildren = currentSplitChildren[parentID] ?? [:]
+
             let rootChanged: Bool
-            switch (oldRoot, newRoot) {
-            case (nil, nil):
-                rootChanged = false
-            case (let oldRoot?, nil), (nil, let newRoot?):
-                rootChanged = oldRoot != newRoot
-            case (let oldRoot?, let newRoot?):
+            if let oldRoot, let newRoot {
                 rootChanged = !Self.samePersistedState(oldRoot, newRoot)
+            } else {
+                rootChanged = oldRoot != nil || newRoot != nil
             }
             let childrenChanged = !Self.samePersistedState(oldChildren, newChildren)
 
@@ -244,8 +240,12 @@ final class HistoryObserver {
         }
 
         for expected in pending.expected {
-            guard let actual = live[expected.id], expected.matchesLiveTransaction(actual) else {
-                return false
+            if expected.tombstone {
+                guard live[expected.id] == nil else { return false }
+            } else {
+                guard let actual = live[expected.id], expected.matchesLiveTransaction(actual) else {
+                    return false
+                }
             }
         }
         return pending.removedIDs.allSatisfy { live[$0] == nil }
