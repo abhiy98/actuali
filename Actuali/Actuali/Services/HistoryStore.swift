@@ -184,14 +184,17 @@ final class HistoryStore: ObservableObject {
     @Published private(set) var errorTitle = "Couldn't Undo"
 
     private let defaults: UserDefaults
+    private var loadedBudgetID: String?
 
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
     }
 
     func load(budgetID: String) {
+        loadedBudgetID = budgetID
         guard let data = defaults.data(forKey: key(budgetID)) else {
             clearLoadedActions()
+            loadedBudgetID = budgetID
             return
         }
         guard let decoded = try? JSONDecoder().decode([HistoryAction].self, from: data) else {
@@ -202,11 +205,14 @@ final class HistoryStore: ObservableObject {
         }
         errorMessage = nil
         errorTitle = "Couldn't Undo"
-        actions = decoded.sorted { $0.createdAt > $1.createdAt }
+        actions = decoded
+            .filter { $0.budgetID == budgetID }
+            .sorted { $0.createdAt > $1.createdAt }
     }
 
     func clearLoadedActions() {
         actions = []
+        loadedBudgetID = nil
         errorMessage = nil
         errorTitle = "Couldn't Undo"
     }
@@ -233,27 +239,27 @@ final class HistoryStore: ObservableObject {
     ) {
         guard !Self.recordingSuppressed, !before.isEmpty || !after.isEmpty else { return }
 
-        if after.count == 1,
-           let snapshot = after.first,
-           let index = actions.firstIndex(where: { action in
-               guard action.status == .applied,
-                     action.budgetID == budgetID,
-                     action.kind == kind,
-                     action.after.count == 1,
-                     let existing = action.after.first else {
-                   return false
-               }
+        if loadedBudgetID != budgetID {
+            load(budgetID: budgetID)
+        }
 
-               return existing.id == snapshot.transferId &&
-                      existing.transferId == snapshot.id
-           }) {
-            actions[index] = HistoryAction(
-                id: actions[index].id,
-                createdAt: actions[index].createdAt,
+        if let snapshot = after.first,
+           after.count == 1,
+           let existing = actions.first,
+           existing.status == .applied,
+           existing.budgetID == budgetID,
+           existing.kind == kind,
+           existing.after.count == 1,
+           let existingSnapshot = existing.after.first,
+           existingSnapshot.id == snapshot.transferId,
+           existingSnapshot.transferId == snapshot.id {
+            actions[0] = HistoryAction(
+                id: existing.id,
+                createdAt: existing.createdAt,
                 budgetID: budgetID,
                 kind: kind,
-                before: actions[index].before + before,
-                after: actions[index].after + after,
+                before: existing.before + before,
+                after: existing.after + after,
                 status: .applied
             )
             save(budgetID)
@@ -277,7 +283,9 @@ final class HistoryStore: ObservableObject {
     }
 
     func canUndo(_ action: HistoryAction) -> Bool {
-        action.status == .applied && actions.first(where: { $0.status == .applied })?.id == action.id
+        action.budgetID == loadedBudgetID &&
+        action.status == .applied &&
+        actions.first(where: { $0.status == .applied })?.id == action.id
     }
 
     func clearError() {
@@ -301,13 +309,22 @@ final class HistoryStore: ObservableObject {
             }
         }
 
-        for expected in action.after {
-            if expected.tombstone {
+        let afterByID = Dictionary(uniqueKeysWithValues: action.after.map { ($0.id, $0) })
+        for expected in action.before {
+            guard let recordedAfter = afterByID[expected.id] else {
+                guard live[expected.id] == nil else {
+                    errorMessage = "This action changed after it was recorded, so it cannot be safely undone."
+                    return
+                }
+                continue
+            }
+
+            if recordedAfter.tombstone {
                 if live[expected.id] != nil {
                     errorMessage = "This action changed after it was recorded, so it cannot be safely undone."
                     return
                 }
-            } else if let actual = live[expected.id], !expected.matchesLiveTransaction(actual) {
+            } else if let actual = live[expected.id], !recordedAfter.matchesLiveTransaction(actual) {
                 errorMessage = "This action changed after it was recorded, so it cannot be safely undone."
                 return
             } else if live[expected.id] == nil {
@@ -316,9 +333,21 @@ final class HistoryStore: ObservableObject {
             }
         }
 
-        let expected: [HistoryTransactionSnapshot] = action.kind == .created ? [] : action.before
-        let removedIDs: Set<String> = action.kind == .created ? Set(action.after.map(\.id)) : []
-        Self.pendingUndo = PendingUndo(budgetID: action.budgetID, expected: expected, removedIDs: removedIDs)
+        let expectedBefore: [HistoryTransactionSnapshot]
+        let removedIDs: Set<String>
+        switch action.kind {
+        case .created:
+            expectedBefore = []
+            removedIDs = Set(action.after.map(\.id))
+        case .edited, .deleted:
+            expectedBefore = action.before
+            removedIDs = []
+        }
+        Self.pendingUndo = PendingUndo(
+            budgetID: action.budgetID,
+            expected: expectedBefore,
+            removedIDs: removedIDs
+        )
         Self.recordingSuppressed = true
 
         do {
@@ -336,30 +365,12 @@ final class HistoryStore: ObservableObject {
                     return
                 }
             case .edited, .deleted:
-                let afterByID = Dictionary(uniqueKeysWithValues: action.after.map { ($0.id, $0) })
-                for previous in action.before {
-                    guard let recordedAfter = afterByID[previous.id] else {
-                        errorMessage = "The recorded action is incomplete and cannot be safely undone."
-                        Self.finishUndoRecording()
-                        return
-                    }
-                    if recordedAfter.tombstone {
-                        guard live[previous.id] == nil else {
-                            errorMessage = "This action changed after it was recorded, so it cannot be safely undone."
-                            Self.finishUndoRecording()
-                            return
-                        }
-                    } else {
-                        guard let current = live[previous.id], recordedAfter.matchesLiveTransaction(current) else {
-                            errorMessage = "This action changed after it was recorded, so it cannot be safely undone."
-                            Self.finishUndoRecording()
-                            return
-                        }
-                    }
+                let recordedAfterForRestore = action.before.map { previous in
+                    afterByID[previous.id] ?? Self.tombstoned(previous)
                 }
                 try await budgetStore.restoreTransactions(
                     action.before.map { $0.transaction() },
-                    from: action.after.map { $0.transaction() }
+                    from: recordedAfterForRestore.map { $0.transaction() }
                 )
             }
         } catch {
@@ -384,6 +395,9 @@ final class HistoryStore: ObservableObject {
 
     #if DEBUG
     func appendForTesting(_ action: HistoryAction, budgetID: String) {
+        if loadedBudgetID != budgetID {
+            load(budgetID: budgetID)
+        }
         actions.insert(action, at: 0)
         actions = Array(actions.prefix(10))
         save(budgetID)
@@ -395,7 +409,14 @@ final class HistoryStore: ObservableObject {
     }
 
     private func save(_ budgetID: String) {
+        guard loadedBudgetID == budgetID else { return }
         guard let data = try? JSONEncoder().encode(actions) else { return }
         defaults.set(data, forKey: key(budgetID))
+    }
+
+    private static func tombstoned(_ snapshot: HistoryTransactionSnapshot) -> HistoryTransactionSnapshot {
+        var result = snapshot
+        result.tombstone = true
+        return result
     }
 }
