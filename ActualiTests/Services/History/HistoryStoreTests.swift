@@ -84,4 +84,58 @@ struct HistoryStoreTests {
         let store = HistoryStore(defaults: defaults)
         #expect(store.canUndo(action) == false)
     }
+
+    @Test func liveSnapshotComparisonIgnoresUnstableReadOnlyFields() {
+        var recorded = HistoryTransactionSnapshot(transaction(id: "tx"))
+        recorded.sortOrder = 123.0
+        recorded.financialId = "wallet-id"
+        recorded.startingBalanceFlag = true
+        recorded.payeeName = "Old Display Name"
+        recorded.categoryName = "Old Category Name"
+
+        var fetched = transaction(id: "tx")
+        fetched.sortOrder = 456.0
+        fetched.financialId = nil
+        fetched.startingBalanceFlag = false
+        fetched.payeeName = "New Display Name"
+        fetched.categoryName = "New Category Name"
+
+        #expect(recorded.matchesLiveTransaction(fetched))
+    }
+
+    @Test func transferAndSplitDeletionTitlesAreExplicit() {
+        let source = transaction(id: "source")
+        let target = transaction(id: "target")
+
+        var transferSource = HistoryTransactionSnapshot(source)
+        var transferTarget = HistoryTransactionSnapshot(target)
+        transferSource.transferId = target.id
+        transferTarget.transferId = source.id
+        transferSource.tombstone = true
+        transferTarget.tombstone = true
+        let deletedTransfer = HistoryAction(
+            id: "transfer",
+            createdAt: Date(),
+            budgetID: "budget",
+            kind: .deleted,
+            before: [HistoryTransactionSnapshot(source), HistoryTransactionSnapshot(target)],
+            after: [transferSource, transferTarget],
+            status: .applied
+        )
+        #expect(deletedTransfer.title == "Deleted transfer")
+
+        var splitParent = HistoryTransactionSnapshot(source)
+        splitParent.isParent = true
+        splitParent.tombstone = true
+        let deletedSplit = HistoryAction(
+            id: "split",
+            createdAt: Date(),
+            budgetID: "budget",
+            kind: .deleted,
+            before: [HistoryTransactionSnapshot(source)],
+            after: [splitParent],
+            status: .applied
+        )
+        #expect(deletedSplit.title == "Deleted split transaction")
+    }
 }
