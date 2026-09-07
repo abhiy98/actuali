@@ -101,8 +101,8 @@ final class HistoryStore: ObservableObject {
             else if live[expected.id].map(HistoryTransactionSnapshot.init) != expected { errorMessage="This action changed after it was recorded, so it cannot be safely undone."; return }
         }
 
-        let expected = action.kind == .created ? [] : action.before
-        let removedIDs = Set(action.kind == .created ? action.after.map(\HistoryTransactionSnapshot.id) : [])
+        let expected: [HistoryTransactionSnapshot] = action.kind == .created ? [] : action.before
+        let removedIDs: Set<String> = action.kind == .created ? Set(action.after.map(\.id)) : []
         Self.pendingUndo = PendingUndo(budgetID: action.budgetID, expected: expected, removedIDs: removedIDs)
         Self.recordingSuppressed=true
         do {
@@ -110,16 +110,16 @@ final class HistoryStore: ObservableObject {
             case .created:
                 budgetStore.error=nil
                 await budgetStore.deleteTransactions(action.after.filter { $0.parentId == nil }.map { $0.transaction() })
-                guard budgetStore.error == nil else { errorMessage=budgetStore.error; finishUndoRecording(); return }
+                guard budgetStore.error == nil else { errorMessage=budgetStore.error; Self.finishUndoRecording(); return }
             case .edited, .deleted:
                 let afterByID=Dictionary(uniqueKeysWithValues: action.after.map { ($0.id,$0) })
                 for previous in action.before {
-                    guard let recordedAfter=afterByID[previous.id] else { errorMessage="The recorded action is incomplete and cannot be safely undone."; finishUndoRecording(); return }
+                    guard let recordedAfter=afterByID[previous.id] else { errorMessage="The recorded action is incomplete and cannot be safely undone."; Self.finishUndoRecording(); return }
                     try await budgetStore.updateTransaction(previous.transaction(), original: recordedAfter.transaction())
                 }
             }
-        } catch { errorMessage=error.localizedDescription; finishUndoRecording(); return }
-        guard let index=actions.firstIndex(where: { $0.id == action.id }) else { finishUndoRecording(); return }
+        } catch { errorMessage=error.localizedDescription; Self.finishUndoRecording(); return }
+        guard let index=actions.firstIndex(where: { $0.id == action.id }) else { Self.finishUndoRecording(); return }
         actions[index].status = .undone; save(action.budgetID)
     }
 
