@@ -232,6 +232,30 @@ final class HistoryStore: ObservableObject {
         after: [HistoryTransactionSnapshot]
     ) {
         guard !Self.recordingSuppressed, !before.isEmpty || !after.isEmpty else { return }
+
+        if let transferID = after.compactMap(\.transferId).first,
+           after.allSatisfy({ $0.transferId == transferID }),
+           before.allSatisfy({ $0.transferId == transferID }),
+           let index = actions.firstIndex(where: {
+               $0.status == .applied &&
+               $0.budgetID == budgetID &&
+               $0.kind == kind &&
+               $0.after.count == 1 &&
+               $0.after.first?.transferId == transferID
+           }) {
+            actions[index] = HistoryAction(
+                id: actions[index].id,
+                createdAt: actions[index].createdAt,
+                budgetID: budgetID,
+                kind: kind,
+                before: actions[index].before + before,
+                after: actions[index].after + after,
+                status: .applied
+            )
+            save(budgetID)
+            return
+        }
+
         actions.insert(
             HistoryAction(
                 id: UUID().uuidString,
