@@ -80,7 +80,7 @@ final class HistoryObserver {
             previous = current
             previousSplitChildren = currentSplitChildren
             if pendingUndo.budgetID == budgetID,
-               await Self.matchesPendingUndo(
+               Self.matchesPendingUndo(
                     pendingUndo,
                     current: current,
                     splitChildren: currentSplitChildren
@@ -109,24 +109,34 @@ final class HistoryObserver {
 
         var handledRootIDs = Set<String>()
         for parentID in splitParentIDs.sorted() {
-            let oldParent = previous[parentID]?.isParent == true ? previous[parentID] : nil
-            let newParent = current[parentID]?.isParent == true ? current[parentID] : nil
+            let oldRoot = previous[parentID]
+            let newRoot = current[parentID]
+            let oldParent = oldRoot?.isParent == true ? oldRoot : nil
+            let newParent = newRoot?.isParent == true ? newRoot : nil
             let oldChildren = previousSplitChildren[parentID] ?? [:]
             let newChildren = currentSplitChildren[parentID] ?? [:]
-            let rootChanged = oldParent.map { old in
-                guard let newParent else { return true }
-                return !Self.samePersistedState(old, newParent)
-            } ?? (newParent != nil)
+            let rootChanged: Bool
+            switch (oldRoot, newRoot) {
+            case (nil, nil):
+                rootChanged = false
+            case (let oldRoot?, nil), (nil, let newRoot?):
+                rootChanged = oldRoot != newRoot
+            case (let oldRoot?, let newRoot?):
+                rootChanged = !Self.samePersistedState(oldRoot, newRoot)
+            }
             let childrenChanged = !Self.samePersistedState(oldChildren, newChildren)
 
+            // A split parent can be converted from a normal transaction and
+            // back again. In either direction the same split action owns the
+            // parent row plus all child rows.
             guard rootChanged || childrenChanged else { continue }
-
             handledRootIDs.insert(parentID)
-            switch (oldParent, newParent) {
-            case (nil, let newParent?):
-                let after = [HistoryTransactionSnapshot(newParent)]
+
+            switch (oldRoot, newRoot) {
+            case (nil, let newRoot?):
+                let after = [HistoryTransactionSnapshot(newRoot)]
                     + newChildren.values
-                        .sorted { Self.sortKey($0) < Self.sortKey($1) }
+                        .sorted { Self.isBefore($0, $1) }
                         .map(HistoryTransactionSnapshot.init)
                 HistoryStore.shared.recordSnapshots(
                     budgetID: budgetID,
@@ -135,10 +145,10 @@ final class HistoryObserver {
                     after: after
                 )
 
-            case (let oldParent?, nil):
-                let before = [HistoryTransactionSnapshot(oldParent)]
+            case (let oldRoot?, nil):
+                let before = [HistoryTransactionSnapshot(oldRoot)]
                     + oldChildren.values
-                        .sorted { Self.sortKey($0) < Self.sortKey($1) }
+                        .sorted { Self.isBefore($0, $1) }
                         .map(HistoryTransactionSnapshot.init)
                 let after = before.map { snapshot in
                     var tombstoned = snapshot
@@ -152,10 +162,10 @@ final class HistoryObserver {
                     after: after
                 )
 
-            case (let oldParent?, let newParent?):
+            case (let oldRoot?, let newRoot?):
                 let allChildIDs = oldChildren.keys.union(newChildren.keys).sorted()
-                var before = [HistoryTransactionSnapshot(oldParent)]
-                var after = [HistoryTransactionSnapshot(newParent)]
+                var before = [HistoryTransactionSnapshot(oldRoot)]
+                var after = [HistoryTransactionSnapshot(newRoot)]
 
                 for childID in allChildIDs {
                     switch (oldChildren[childID], newChildren[childID]) {
@@ -225,7 +235,7 @@ final class HistoryObserver {
         _ pending: HistoryStore.PendingUndo,
         current: [String: Transaction],
         splitChildren: [String: [String: Transaction]]
-    ) async -> Bool {
+    ) -> Bool {
         var live = current
         for children in splitChildren.values {
             for child in children.values {
@@ -262,7 +272,10 @@ final class HistoryObserver {
         return true
     }
 
-    private static func sortKey(_ transaction: Transaction) -> (Double, String) {
-        (transaction.sortOrder ?? 0, transaction.id)
+    private static func isBefore(_ lhs: Transaction, _ rhs: Transaction) -> Bool {
+        let lhsSort = lhs.sortOrder ?? 0
+        let rhsSort = rhs.sortOrder ?? 0
+        if lhsSort != rhsSort { return lhsSort < rhsSort }
+        return lhs.id < rhs.id
     }
 }
