@@ -146,7 +146,7 @@ struct HistoryAction: Identifiable, Codable, Equatable {
             case .deleted: return "Deleted transfer"
             }
         }
-        if after.contains(where: { $0.isParent }) {
+        if after.contains(where: { $0.isParent }) || before.contains(where: { $0.isParent }) {
             switch kind {
             case .created: return "Added split transaction"
             case .edited: return "Edited split transaction"
@@ -163,11 +163,6 @@ struct HistoryAction: Identifiable, Codable, Equatable {
 
     var detail: String {
         primarySnapshot.map { Transaction.formattedDate(from: $0.date) } ?? ""
-    }
-
-    var amountText: String? {
-        guard let amount = primarySnapshot?.amount else { return nil }
-        return "\(amount < 0 ? "−" : "")$\(String(format: "%.2f", Double(abs(amount)) / 100.0))"
     }
 }
 
@@ -216,7 +211,26 @@ final class HistoryStore: ObservableObject {
         errorTitle = "Couldn't Undo"
     }
 
-    func record(budgetID: String, kind: HistoryActionKind, before: [Transaction], after: [Transaction]) {
+    func record(
+        budgetID: String,
+        kind: HistoryActionKind,
+        before: [Transaction],
+        after: [Transaction]
+    ) {
+        recordSnapshots(
+            budgetID: budgetID,
+            kind: kind,
+            before: before.map(HistoryTransactionSnapshot.init),
+            after: after.map(HistoryTransactionSnapshot.init)
+        )
+    }
+
+    func recordSnapshots(
+        budgetID: String,
+        kind: HistoryActionKind,
+        before: [HistoryTransactionSnapshot],
+        after: [HistoryTransactionSnapshot]
+    ) {
         guard !Self.recordingSuppressed, !before.isEmpty || !after.isEmpty else { return }
         actions.insert(
             HistoryAction(
@@ -224,8 +238,8 @@ final class HistoryStore: ObservableObject {
                 createdAt: Date(),
                 budgetID: budgetID,
                 kind: kind,
-                before: before.map(HistoryTransactionSnapshot.init),
-                after: after.map(HistoryTransactionSnapshot.init),
+                before: before,
+                after: after,
                 status: .applied
             ),
             at: 0
@@ -248,7 +262,17 @@ final class HistoryStore: ObservableObject {
         errorMessage = nil
         errorTitle = "Couldn't Undo"
 
-        let live = Dictionary(uniqueKeysWithValues: budgetStore.transactions.map { ($0.id, $0) })
+        var live = Dictionary(uniqueKeysWithValues: budgetStore.transactions.map { ($0.id, $0) })
+        let splitParentIDs = Set(
+            action.before.compactMap { $0.isParent ? $0.id : $0.parentId } +
+            action.after.compactMap { $0.isParent ? $0.id : $0.parentId }
+        )
+        for parentID in splitParentIDs {
+            for child in await budgetStore.fetchSplitChildren(parentId: parentID) {
+                live[child.id] = child
+            }
+        }
+
         for expected in action.after {
             if expected.tombstone {
                 if live[expected.id] != nil {
@@ -291,10 +315,18 @@ final class HistoryStore: ObservableObject {
                         Self.finishUndoRecording()
                         return
                     }
-                    guard let current = live[previous.id], recordedAfter.matchesLiveTransaction(current) else {
-                        errorMessage = "This action changed after it was recorded, so it cannot be safely undone."
-                        Self.finishUndoRecording()
-                        return
+                    if recordedAfter.tombstone {
+                        guard live[previous.id] == nil else {
+                            errorMessage = "This action changed after it was recorded, so it cannot be safely undone."
+                            Self.finishUndoRecording()
+                            return
+                        }
+                    } else {
+                        guard let current = live[previous.id], recordedAfter.matchesLiveTransaction(current) else {
+                            errorMessage = "This action changed after it was recorded, so it cannot be safely undone."
+                            Self.finishUndoRecording()
+                            return
+                        }
                     }
                 }
                 try await budgetStore.restoreTransactions(
