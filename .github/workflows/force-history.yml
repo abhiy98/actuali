@@ -17,8 +17,8 @@ jobs:
           ref: History
           fetch-depth: 0
 
-      - name: Apply History implementation
-        run: python3 .github/force_history.py
+      - name: Apply focused History instrumentation
+        run: python3 .github/force_history_v2.py
 
       - name: Commit History implementation
         run: |
