@@ -17,7 +17,7 @@ struct HistoryView: View {
                 ForEach(historyStore.actions) { action in
                     HStack(spacing: 10) {
                         Image(systemName: symbol(for: action.kind))
-                            .font(.subheadline.weight(.semibold))
+                            .font(.caption.weight(.semibold))
                             .foregroundStyle(.secondary)
                             .frame(width: 20)
                             .accessibilityHidden(true)
@@ -25,12 +25,14 @@ struct HistoryView: View {
                         VStack(alignment: .leading, spacing: 1) {
                             HStack(spacing: 6) {
                                 Text(action.title)
+                                    .font(.subheadline)
                                     .foregroundStyle(action.status == .undone ? .secondary : .primary)
                                     .lineLimit(1)
                                     .truncationMode(.tail)
 
                                 if let amount = action.amountText {
                                     Text(amount)
+                                        .font(.subheadline.monospacedDigit())
                                         .foregroundStyle(.secondary)
                                         .lineLimit(1)
                                         .fixedSize(horizontal: true, vertical: false)
@@ -38,6 +40,7 @@ struct HistoryView: View {
                             }
 
                             Text(detail(for: action))
+                                .font(.subheadline)
                                 .foregroundStyle(.secondary)
                                 .lineLimit(1)
                                 .truncationMode(.tail)
@@ -48,7 +51,7 @@ struct HistoryView: View {
 
                         if action.status == .undone {
                             Text("Undone")
-                                .font(.subheadline)
+                                .font(.caption)
                                 .foregroundStyle(.secondary)
                                 .lineLimit(1)
                                 .fixedSize(horizontal: true, vertical: false)
