@@ -77,7 +77,7 @@ struct HistoryView: View {
             HistoryUndoReviewView(
                 action: action,
                 detail: detail(for: action),
-                formattedAmount: budgetStore.formatCurrency(action.primarySnapshot?.amount ?? 0)
+                formatAmount: { budgetStore.formatCurrency($0) }
             ) {
                 Task {
                     await historyStore.undo(action, using: budgetStore)
@@ -169,7 +169,7 @@ struct HistoryView: View {
 private struct HistoryUndoReviewView: View {
     let action: HistoryAction
     let detail: String
-    let formattedAmount: String
+    let formatAmount: (Int) -> String
     let confirm: () -> Void
     @Environment(\.dismiss) private var dismiss
 
@@ -178,8 +178,8 @@ private struct HistoryUndoReviewView: View {
             List {
                 Section {
                     Text(action.title).font(.headline)
-                    if action.primarySnapshot?.amount != nil {
-                        Text(formattedAmount).font(.title3.monospacedDigit())
+                    if let amount = action.primarySnapshot?.amount {
+                        Text(formatAmount(amount)).font(.title3.monospacedDigit())
                     }
                     Text(detail).foregroundStyle(.secondary)
                 }
@@ -191,7 +191,7 @@ private struct HistoryUndoReviewView: View {
                         ForEach(action.before) { snapshot in
                             VStack(alignment: .leading, spacing: 3) {
                                 Text(snapshot.payeeName?.isEmpty == false ? snapshot.payeeName! : "Transaction")
-                                Text(formattedAmountForSnapshot(snapshot))
+                                Text(formatAmount(snapshot.amount))
                                     .font(.caption.monospacedDigit())
                                     .foregroundStyle(.secondary)
                             }
@@ -210,14 +210,5 @@ private struct HistoryUndoReviewView: View {
                 }
             }
         }
-    }
-
-    private func formattedAmountForSnapshot(_ snapshot: HistoryTransactionSnapshot) -> String {
-        CurrencyAmountFormat.string(
-            cents: snapshot.amount,
-            currencyCode: UserDefaults.standard.string(forKey: "currencyCode") ?? "USD",
-            narrowSymbol: UserDefaults.standard.bool(forKey: "useNarrowCurrencySymbol"),
-            numberFormat: .commaDot
-        )
     }
 }
