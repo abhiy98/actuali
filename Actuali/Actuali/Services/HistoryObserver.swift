@@ -85,7 +85,7 @@ final class HistoryObserver {
     private static func matchesPendingUndo(_ pending: HistoryStore.PendingUndo, current: [String: Transaction]) -> Bool {
         let expectedByID = Dictionary(uniqueKeysWithValues: pending.expected.map { ($0.id, $0) })
         for expected in expectedByID.values {
-            guard let actual = current[expected.id], HistoryTransactionSnapshot(actual) == expected else { return false }
+            guard let actual = current[expected.id], expected.matchesLiveTransaction(actual) else { return false }
         }
         return pending.removedIDs.allSatisfy { current[$0] == nil }
     }
@@ -97,12 +97,11 @@ final class HistoryObserver {
     }
 
     // Payee/category display names, transfer display data, split portions,
-    // and sort order are derived or normalized during reads. Comparing only
-    // transaction content avoids recording a history row for a plain refresh.
+    // sort order, and insert-only fields that normal reads cannot reproduce
+    // are intentionally excluded. Remote edits are still valid History events.
     // ponytail: observing the published snapshot keeps this change small and
     // avoids duplicating every BudgetStore mutation path. Ceiling: mixed
-    // topology edits (for example adding/removing split lines) are not logged,
-    // and remote transaction changes cannot be perfectly distinguished here.
+    // topology edits (for example adding/removing split lines) are not logged.
     private static func samePersistedState(_ lhs: Transaction, _ rhs: Transaction) -> Bool {
         HistoryTransactionSnapshot(lhs).matchesLiveTransaction(rhs)
     }
