@@ -2,6 +2,7 @@ import SwiftUI
 
 struct SettingsView: View {
     @EnvironmentObject private var budgetStore: BudgetStore
+    @State private var historyObserver: HistoryObserver?
 
     var body: some View {
         NavigationStack {
@@ -79,6 +80,11 @@ struct SettingsView: View {
             .readableWidth()
             .navigationTitle("More")
             .contentMargins(.horizontal, 6, for: .scrollContent)
+        }
+        .onAppear {
+            if historyObserver == nil {
+                historyObserver = HistoryObserver(store: budgetStore)
+            }
         }
         .overlay {
             if budgetStore.isLoading {
