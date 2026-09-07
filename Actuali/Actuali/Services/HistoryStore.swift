@@ -243,6 +243,27 @@ final class HistoryStore: ObservableObject {
             load(budgetID: budgetID)
         }
 
+        if kind == .edited,
+           let existing = actions.first,
+           existing.status == .applied,
+           existing.budgetID == budgetID,
+           let existingParentID = Self.splitParentID(before: existing.before, after: existing.after),
+           let parentID = Self.splitParentID(before: before, after: after),
+           existingParentID == parentID,
+           Date().timeIntervalSince(existing.createdAt) <= 0.5 {
+            actions[0] = HistoryAction(
+                id: existing.id,
+                createdAt: existing.createdAt,
+                budgetID: budgetID,
+                kind: kind,
+                before: Self.mergeBefore(existing.before, before),
+                after: Self.mergeAfter(existing.after, after),
+                status: .applied
+            )
+            save(budgetID)
+            return
+        }
+
         if let snapshot = after.first,
            after.count == 1,
            let existing = actions.first,
@@ -266,6 +287,8 @@ final class HistoryStore: ObservableObject {
             return
         }
 
+        errorMessage = nil
+        errorTitle = "Couldn't Undo"
         actions.insert(
             HistoryAction(
                 id: UUID().uuidString,
@@ -417,6 +440,41 @@ final class HistoryStore: ObservableObject {
     private static func tombstoned(_ snapshot: HistoryTransactionSnapshot) -> HistoryTransactionSnapshot {
         var result = snapshot
         result.tombstone = true
+        return result
+    }
+
+    private static func splitParentID(
+        before: [HistoryTransactionSnapshot],
+        after: [HistoryTransactionSnapshot]
+    ) -> String? {
+        after.first(where: { $0.isParent })?.id
+            ?? before.first(where: { $0.isParent })?.id
+            ?? after.compactMap(\.parentId).first
+            ?? before.compactMap(\.parentId).first
+    }
+
+    private static func mergeBefore(
+        _ existing: [HistoryTransactionSnapshot],
+        _ newer: [HistoryTransactionSnapshot]
+    ) -> [HistoryTransactionSnapshot] {
+        var result = existing
+        let existingIDs = Set(existing.map(\.id))
+        result.append(contentsOf: newer.filter { !existingIDs.contains($0.id) })
+        return result
+    }
+
+    private static func mergeAfter(
+        _ existing: [HistoryTransactionSnapshot],
+        _ newer: [HistoryTransactionSnapshot]
+    ) -> [HistoryTransactionSnapshot] {
+        var result = existing
+        for snapshot in newer {
+            if let index = result.firstIndex(where: { $0.id == snapshot.id }) {
+                result[index] = snapshot
+            } else {
+                result.append(snapshot)
+            }
+        }
         return result
     }
 }
