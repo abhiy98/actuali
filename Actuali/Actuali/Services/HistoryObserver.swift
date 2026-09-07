@@ -21,10 +21,6 @@ final class HistoryObserver {
                     self.hasBaseline = false
                     self.previous = [:]
                     self.previousSplitChildren = [:]
-                    // Wait for the corresponding transaction publication. The
-                    // old budget's rows can still be in memory when the budget
-                    // ID changes, so consuming here could establish the wrong
-                    // baseline and create a phantom History event.
                     return
                 }
                 self.enqueueConsume(store: store, budgetID: budgetID, transactions: store.transactions)
@@ -126,14 +122,10 @@ final class HistoryObserver {
             }
             let childrenChanged = !Self.samePersistedState(oldChildren, newChildren)
 
-            // A split parent can be converted from a normal transaction and
-            // back again. In either direction the same split action owns the
-            // parent row plus all child rows.
             guard rootChanged || childrenChanged else { continue }
             handledRootIDs.insert(parentID)
 
-            switch (oldRoot, newRoot) {
-            case (nil, let newRoot?):
+            if oldRoot == nil, let newRoot {
                 let after = [HistoryTransactionSnapshot(newRoot)]
                     + newChildren.values
                         .sorted { Self.isBefore($0, $1) }
@@ -144,8 +136,7 @@ final class HistoryObserver {
                     before: [],
                     after: after
                 )
-
-            case (let oldRoot?, nil):
+            } else if let oldRoot, newRoot == nil {
                 let before = [HistoryTransactionSnapshot(oldRoot)]
                     + oldChildren.values
                         .sorted { Self.isBefore($0, $1) }
@@ -161,29 +152,25 @@ final class HistoryObserver {
                     before: before,
                     after: after
                 )
-
-            case (let oldRoot?, let newRoot?):
-                let allChildIDs = oldChildren.keys.union(newChildren.keys).sorted()
+            } else if let oldRoot, let newRoot {
+                let allChildIDs = Set(oldChildren.keys).union(newChildren.keys).sorted()
                 var before = [HistoryTransactionSnapshot(oldRoot)]
                 var after = [HistoryTransactionSnapshot(newRoot)]
 
                 for childID in allChildIDs {
-                    switch (oldChildren[childID], newChildren[childID]) {
-                    case (let oldChild?, let newChild?):
+                    if let oldChild = oldChildren[childID], let newChild = newChildren[childID] {
                         before.append(HistoryTransactionSnapshot(oldChild))
                         after.append(HistoryTransactionSnapshot(newChild))
-                    case (nil, let newChild?):
+                    } else if let newChild = newChildren[childID] {
                         var absent = HistoryTransactionSnapshot(newChild)
                         absent.tombstone = true
                         before.append(absent)
                         after.append(HistoryTransactionSnapshot(newChild))
-                    case (let oldChild?, nil):
+                    } else if let oldChild = oldChildren[childID] {
                         before.append(HistoryTransactionSnapshot(oldChild))
                         var tombstoned = HistoryTransactionSnapshot(oldChild)
                         tombstoned.tombstone = true
                         after.append(tombstoned)
-                    case (nil, nil):
-                        break
                     }
                 }
 
