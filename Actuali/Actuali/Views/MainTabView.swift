@@ -3,6 +3,7 @@ import SwiftUI
 struct MainTabView: View {
     @State private var selectedTab = initialTab()
     @StateObject private var notificationRouter = NotificationRouter.shared
+    @State private var historyObserver: HistoryObserver?
     @EnvironmentObject private var budgetStore: BudgetStore
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @Environment(\.isWideLayout) private var isWideLayout
@@ -46,6 +47,11 @@ struct MainTabView: View {
                 tabs
             }
         }
+        .onAppear {
+            if historyObserver == nil {
+                historyObserver = HistoryObserver(store: budgetStore)
+            }
+        }
         .onChange(of: notificationRouter.pendingAllAccountsNavigation) { _, pending in
             if pending { selectedTab = 0 }
         }
@@ -74,10 +80,6 @@ struct MainTabView: View {
                 Label("Budget", systemImage: "wallet.bifold")
             }
             .badge(overspentCount)
-            // On the tab, not its label: under the Tab API the tab's own
-            // modifiers are what reach the tab bar item. (Neither placement
-            // surfaces the value to XCUITest on iOS 26 — BudgetTabBadgeUITests
-            // fails on main for that reason, unrelated to this.)
             .accessibilityValue(Text(overspentBadgeValue))
 
             Tab(value: 0) {
