@@ -22,18 +22,13 @@ struct HistoryView: View {
                             .frame(width: 20)
                             .accessibilityHidden(true)
 
-                        VStack(alignment: .leading, spacing: 1) {
-                            Text(action.title)
-                                .foregroundStyle(action.status == .undone ? .secondary : .primary)
-                                .lineLimit(1)
-                            Text(detail(for: action))
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                                .lineLimit(1)
-                        }
-                        .layoutPriority(1)
+                        Text(action.title)
+                            .foregroundStyle(action.status == .undone ? .secondary : .primary)
+                            .lineLimit(1)
+                            .truncationMode(.tail)
+                            .layoutPriority(1)
 
-                        Spacer(minLength: 6)
+                        Spacer(minLength: 4)
 
                         if let amount = action.amountText {
                             Text(amount)
@@ -41,22 +36,27 @@ struct HistoryView: View {
                                 .foregroundStyle(.secondary)
                                 .lineLimit(1)
                                 .minimumScaleFactor(0.75)
+                                .fixedSize(horizontal: true, vertical: false)
                         }
 
                         if action.status == .undone {
                             Text("Undone")
                                 .font(.caption.weight(.semibold))
                                 .foregroundStyle(.secondary)
+                                .lineLimit(1)
+                                .fixedSize(horizontal: true, vertical: false)
                         } else if historyStore.canUndo(action) {
                             Button("Undo") { selectedAction = action }
                                 .font(.subheadline)
                                 .frame(minWidth: 44, alignment: .trailing)
+                                .fixedSize(horizontal: true, vertical: false)
                         }
                     }
                     .frame(height: 48)
                     .listRowInsets(EdgeInsets(top: 0, leading: 16, bottom: 0, trailing: 16))
                     .listRowSeparator(.visible)
                     .accessibilityElement(children: .combine)
+                    .accessibilityLabel("\(action.title). \(detail(for: action))")
                 }
             }
         }
