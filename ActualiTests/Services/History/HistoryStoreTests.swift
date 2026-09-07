@@ -71,6 +71,74 @@ struct HistoryStoreTests {
         #expect(second.actions.first?.after.first?.id == "persisted")
     }
 
+    @Test func historyIsIsolatedPerBudget() {
+        let suite = "HistoryStoreTests-\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let store = HistoryStore(defaults: defaults)
+
+        store.record(
+            budgetID: "budget-a",
+            kind: .created,
+            before: [],
+            after: [transaction(id: "a")]
+        )
+        store.record(
+            budgetID: "budget-b",
+            kind: .created,
+            before: [],
+            after: [transaction(id: "b")]
+        )
+
+        store.load(budgetID: "budget-a")
+        #expect(store.actions.count == 1)
+        #expect(store.actions[0].budgetID == "budget-a")
+        #expect(store.actions[0].after.first?.id == "a")
+
+        store.load(budgetID: "budget-b")
+        #expect(store.actions.count == 1)
+        #expect(store.actions[0].budgetID == "budget-b")
+        #expect(store.actions[0].after.first?.id == "b")
+
+        let reloaded = HistoryStore(defaults: defaults)
+        reloaded.load(budgetID: "budget-b")
+        #expect(reloaded.actions.count == 1)
+        #expect(reloaded.actions[0].budgetID == "budget-b")
+        #expect(reloaded.actions[0].after.first?.id == "b")
+    }
+
+    @Test func actionsWithWrongBudgetAreDiscardedOnLoad() {
+        let suite = "HistoryStoreTests-\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+
+        let wrongBudget = HistoryAction(
+            id: "wrong",
+            createdAt: Date(),
+            budgetID: "budget-b",
+            kind: .created,
+            before: [],
+            after: [HistoryTransactionSnapshot(transaction(id: "b"))],
+            status: .applied
+        )
+        let rightBudget = HistoryAction(
+            id: "right",
+            createdAt: Date().addingTimeInterval(-1),
+            budgetID: "budget-a",
+            kind: .created,
+            before: [],
+            after: [HistoryTransactionSnapshot(transaction(id: "a"))],
+            status: .applied
+        )
+        defaults.set(try! JSONEncoder().encode([wrongBudget, rightBudget]), forKey: "history.actions.budget-a")
+
+        let store = HistoryStore(defaults: defaults)
+        store.load(budgetID: "budget-a")
+        #expect(store.actions.count == 1)
+        #expect(store.actions[0].budgetID == "budget-a")
+        #expect(store.actions[0].after.first?.id == "a")
+    }
+
     @Test func recordsFullSplitSnapshots() {
         let suite = "HistoryStoreTests-\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: suite)!
@@ -160,6 +228,7 @@ struct HistoryStoreTests {
         )
 
         let store = HistoryStore(defaults: defaults)
+        store.load(budgetID: "budget")
         #expect(store.canUndo(action) == false)
     }
 
@@ -179,6 +248,32 @@ struct HistoryStoreTests {
         fetched.categoryName = "New Category Name"
 
         #expect(recorded.matchesLiveTransaction(fetched))
+    }
+
+    @Test func liveSnapshotComparisonDetectsUndoRelevantChanges() {
+        let base = HistoryTransactionSnapshot(transaction(id: "tx"))
+        let mutators: [(HistoryTransactionSnapshot) -> Void] = [
+            { $0.accountId = "other-account" },
+            { $0.date += 1 },
+            { $0.amount -= 1 },
+            { $0.payeeId = "other-payee" },
+            { $0.categoryId = "other-category" },
+            { $0.notes = "changed" },
+            { $0.cleared = true },
+            { $0.reconciled = true },
+            { $0.transferId = "other-transfer" },
+            { $0.isParent = true },
+            { $0.parentId = "parent" },
+            { $0.tombstone = true },
+            { $0.importedPayee = "imported" },
+            { $0.schedule = "schedule" }
+        ]
+
+        for mutate in mutators {
+            var changed = base
+            mutate(&changed)
+            #expect(changed.matchesLiveTransaction(base.transaction()) == false)
+        }
     }
 
     @Test func transferAndSplitDeletionTitlesAreExplicit() {
@@ -248,5 +343,44 @@ struct HistoryStoreTests {
         #expect(store.actions[0].after.contains { $0.id == source.id })
         #expect(store.actions[0].after.contains { $0.id == target.id })
         #expect(store.actions[0].title == "Created transfer")
+    }
+
+    @Test func doesNotCoalesceUnrelatedTransferLegs() {
+        let suite = "HistoryStoreTests-\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let store = HistoryStore(defaults: defaults)
+
+        let first = transaction(id: "first")
+        let unrelated = transaction(id: "unrelated")
+        let delayedPartner = transaction(id: "partner")
+        var firstSnapshot = HistoryTransactionSnapshot(first)
+        var partnerSnapshot = HistoryTransactionSnapshot(delayedPartner)
+        firstSnapshot.transferId = delayedPartner.id
+        partnerSnapshot.transferId = first.id
+
+        store.recordSnapshots(
+            budgetID: "budget",
+            kind: .created,
+            before: [],
+            after: [firstSnapshot]
+        )
+        store.record(
+            budgetID: "budget",
+            kind: .created,
+            before: [],
+            after: [unrelated]
+        )
+        store.recordSnapshots(
+            budgetID: "budget",
+            kind: .created,
+            before: [],
+            after: [partnerSnapshot]
+        )
+
+        #expect(store.actions.count == 3)
+        #expect(store.actions[0].after.first?.id == delayedPartner.id)
+        #expect(store.actions[1].after.first?.id == unrelated.id)
+        #expect(store.actions[2].after.first?.id == first.id)
     }
 }
