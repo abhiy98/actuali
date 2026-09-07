@@ -15,30 +15,52 @@ struct HistoryView: View {
                 )
             } else {
                 ForEach(historyStore.actions) { action in
-                    HStack(spacing: 12) {
+                    HStack(spacing: 10) {
                         Image(systemName: symbol(for: action.kind))
+                            .font(.subheadline.weight(.semibold))
                             .foregroundStyle(.secondary)
-                            .frame(width: 22)
-                        VStack(alignment: .leading, spacing: 3) {
+                            .frame(width: 20)
+                            .accessibilityHidden(true)
+
+                        VStack(alignment: .leading, spacing: 1) {
                             Text(action.title)
                                 .foregroundStyle(action.status == .undone ? .secondary : .primary)
+                                .lineLimit(1)
                             Text(action.detail)
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
+                                .lineLimit(1)
                         }
-                        Spacer(minLength: 8)
-                        if let amount = action.amountText { Text(amount).font(.callout.monospacedDigit()).foregroundStyle(.secondary) }
+                        .layoutPriority(1)
+
+                        Spacer(minLength: 6)
+
+                        if let amount = action.amountText {
+                            Text(amount)
+                                .font(.callout.monospacedDigit())
+                                .foregroundStyle(.secondary)
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.75)
+                        }
+
                         if action.status == .undone {
-                            Text("Undone").font(.caption.weight(.semibold)).foregroundStyle(.secondary)
+                            Text("Undone")
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(.secondary)
                         } else if historyStore.canUndo(action) {
                             Button("Undo") { selectedAction = action }
+                                .font(.subheadline)
+                                .frame(minWidth: 44, alignment: .trailing)
                         }
                     }
-                    .padding(.vertical, 4)
+                    .frame(height: 48)
+                    .listRowInsets(EdgeInsets(top: 0, leading: 16, bottom: 0, trailing: 16))
+                    .listRowSeparator(.visible)
                     .accessibilityElement(children: .combine)
                 }
             }
         }
+        .listStyle(.plain)
         .navigationTitle("History")
         .task { load() }
         .refreshable { load() }
