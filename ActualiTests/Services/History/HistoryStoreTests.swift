@@ -67,6 +67,10 @@ struct HistoryStoreTests {
     }
 
     @Test func undoneActionsCannotBeUndone() {
+        let suite = "HistoryStoreTests-\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+
         let action = HistoryAction(
             id: "undone",
             createdAt: Date(),
@@ -77,7 +81,7 @@ struct HistoryStoreTests {
             status: .undone
         )
 
-        let store = HistoryStore(defaults: UserDefaults(suiteName: "HistoryStoreTests-\(UUID().uuidString)")!)
+        let store = HistoryStore(defaults: defaults)
         #expect(store.canUndo(action) == false)
     }
 }
