@@ -17,7 +17,7 @@ struct HistoryView: View {
                 ForEach(historyStore.actions) { action in
                     HStack(spacing: 10) {
                         Image(systemName: symbol(for: action.kind))
-                            .font(.caption.weight(.semibold))
+                            .font(.caption2.weight(.semibold))
                             .foregroundStyle(.secondary)
                             .frame(width: 20)
                             .accessibilityHidden(true)
@@ -25,14 +25,14 @@ struct HistoryView: View {
                         VStack(alignment: .leading, spacing: 1) {
                             HStack(spacing: 6) {
                                 Text(action.title)
-                                    .font(.subheadline)
+                                    .font(.caption)
                                     .foregroundStyle(action.status == .undone ? .secondary : .primary)
                                     .lineLimit(1)
                                     .truncationMode(.tail)
 
                                 if let amount = action.amountText {
                                     Text(amount)
-                                        .font(.subheadline.monospacedDigit())
+                                        .font(.caption.monospacedDigit())
                                         .foregroundStyle(.secondary)
                                         .lineLimit(1)
                                         .fixedSize(horizontal: true, vertical: false)
@@ -40,7 +40,7 @@ struct HistoryView: View {
                             }
 
                             Text(detail(for: action))
-                                .font(.subheadline)
+                                .font(.caption)
                                 .foregroundStyle(.secondary)
                                 .lineLimit(1)
                                 .truncationMode(.tail)
@@ -57,7 +57,7 @@ struct HistoryView: View {
                                 .fixedSize(horizontal: true, vertical: false)
                         } else if historyStore.canUndo(action) {
                             Button("Undo") { selectedAction = action }
-                                .font(.subheadline)
+                                .font(.caption)
                                 .frame(minWidth: 44, alignment: .trailing)
                                 .fixedSize(horizontal: true, vertical: false)
                         }
