@@ -3,7 +3,6 @@ import SwiftUI
 struct MainTabView: View {
     @State private var selectedTab = initialTab()
     @StateObject private var notificationRouter = NotificationRouter.shared
-    @State private var historyObserver: HistoryObserver?
     @EnvironmentObject private var budgetStore: BudgetStore
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @Environment(\.isWideLayout) private var isWideLayout
@@ -45,11 +44,6 @@ struct MainTabView: View {
                 tabs.tabViewStyle(.sidebarAdaptable)
             } else {
                 tabs
-            }
-        }
-        .onAppear {
-            if historyObserver == nil {
-                historyObserver = HistoryObserver(store: budgetStore)
             }
         }
         .onChange(of: notificationRouter.pendingAllAccountsNavigation) { _, pending in
