@@ -2725,6 +2725,13 @@ final class BudgetStore: ObservableObject {
 
         try await syncClient.createTransaction(transaction)
 
+        // Publish the persisted row before the full refresh so local observers
+        // such as History see the transaction immediately.
+        if let database, let saved = try? await database.fetchTransaction(id: transaction.id) {
+            transactions.removeAll { $0.id == saved.id }
+            transactions.append(saved)
+        }
+
         // Refresh local data (without recreating SyncClient, which would cancel the scheduled sync)
         await refreshDataOnly()
     }
