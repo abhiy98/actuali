@@ -243,6 +243,10 @@ final class HistoryStore: ObservableObject {
             load(budgetID: budgetID)
         }
 
+        // ponytail: split edits currently publish parent/child changes separately;
+        // only merge adjacent publications for the same parent within 0.5s. The
+        // ceiling is intentional. A future operation-scoped History transaction
+        // can remove the timing heuristic without changing stored snapshots.
         if kind == .edited,
            let existing = actions.first,
            existing.status == .applied,
@@ -391,10 +395,29 @@ final class HistoryStore: ObservableObject {
                 let recordedAfterForRestore = action.before.map { previous in
                     afterByID[previous.id] ?? Self.tombstoned(previous)
                 }
-                try await budgetStore.restoreTransactions(
-                    action.before.map { $0.transaction() },
-                    from: recordedAfterForRestore.map { $0.transaction() }
-                )
+                do {
+                    try await budgetStore.restoreTransactions(
+                        action.before.map { $0.transaction() },
+                        from: recordedAfterForRestore.map { $0.transaction() }
+                    )
+                } catch {
+                    // The underlying batch API processes rows sequentially today.
+                    // Compensate on failure so a multi-row Undo does not remain
+                    // partially restored when one row fails.
+                    do {
+                        try await budgetStore.restoreTransactions(
+                            recordedAfterForRestore.map { $0.transaction() },
+                            from: action.before.map { $0.transaction() }
+                        )
+                    } catch {
+                        errorMessage = "Undo failed and the previous state could not be restored. Please reopen the budget and verify these transactions."
+                        Self.finishUndoRecording()
+                        return
+                    }
+                    errorMessage = error.localizedDescription
+                    Self.finishUndoRecording()
+                    return
+                }
             }
         } catch {
             errorMessage = error.localizedDescription
