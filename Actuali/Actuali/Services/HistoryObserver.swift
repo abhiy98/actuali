@@ -83,6 +83,10 @@ final class HistoryObserver {
     // Payee/category display names, transfer display data, and split portions
     // are derived during reads. Comparing only persisted transaction state
     // avoids recording a history row for a plain refresh or rename.
+    // ponytail: observing the published snapshot keeps this change small and
+    // avoids duplicating every BudgetStore mutation path. Ceiling: mixed
+    // topology edits (for example adding/removing split lines) are not logged,
+    // and remote transaction changes cannot be perfectly distinguished here.
     private static func samePersistedState(_ lhs: Transaction, _ rhs: Transaction) -> Bool {
         lhs.id == rhs.id &&
         lhs.accountId == rhs.accountId &&
