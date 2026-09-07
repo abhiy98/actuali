@@ -55,6 +55,7 @@ struct HistoryView: View {
                                 .foregroundStyle(.secondary)
                                 .lineLimit(1)
                                 .fixedSize(horizontal: true, vertical: false)
+                                .accessibilityLabel("Undone")
                         } else if historyStore.canUndo(action) {
                             Button("Undo") { selectedAction = action }
                                 .font(.caption2)
@@ -65,20 +66,23 @@ struct HistoryView: View {
                     .frame(height: 48)
                     .listRowInsets(EdgeInsets(top: 0, leading: 16, bottom: 0, trailing: 16))
                     .listRowSeparator(.visible)
-                    .accessibilityElement(children: .combine)
-                    .accessibilityLabel("\(action.title). \(detail(for: action))")
                 }
             }
         }
         .listStyle(.plain)
         .navigationTitle("History")
-        .task { load() }
+        .task(id: budgetStore.currentBudgetId) { load() }
         .refreshable { load() }
         .sheet(item: $selectedAction) { action in
-            HistoryUndoReviewView(action: action) {
+            HistoryUndoReviewView(
+                action: action,
+                detail: detail(for: action)
+            ) {
                 Task {
                     await historyStore.undo(action, using: budgetStore)
-                    if historyStore.errorMessage == nil { selectedAction = nil }
+                    if historyStore.errorMessage == nil {
+                        selectedAction = nil
+                    }
                 }
             }
             .presentationDetents([.medium])
@@ -94,7 +98,10 @@ struct HistoryView: View {
     }
 
     private func load() {
-        guard let budgetID = budgetStore.currentBudgetId else { return }
+        guard let budgetID = budgetStore.currentBudgetId else {
+            historyStore.clearLoadedActions()
+            return
+        }
         historyStore.load(budgetID: budgetID)
     }
 
@@ -103,9 +110,10 @@ struct HistoryView: View {
 
         let account = budgetStore.accounts.first(where: { $0.id == snapshot.accountId })?.name
         let category = snapshot.categoryName?.isEmpty == false ? snapshot.categoryName : nil
-        let notes = snapshot.notes?.isEmpty == false
+        let hasNotes = snapshot.notes?.isEmpty == false
 
-        if action.kind == .edited, let before = action.before.first(where: { $0.id == snapshot.id }) {
+        if action.kind == .edited,
+           let before = action.before.first(where: { $0.id == snapshot.id }) {
             if before.amount != snapshot.amount {
                 return "Amount: \(formattedAmount(before.amount)) → \(formattedAmount(snapshot.amount))"
             }
@@ -116,9 +124,9 @@ struct HistoryView: View {
                 return "Payee: \(before.payeeName ?? "Transaction") → \(snapshot.payeeName ?? "Transaction")"
             }
             if before.notes != snapshot.notes {
-                return before.notes?.isEmpty == false && notes
+                return before.notes?.isEmpty == false && hasNotes
                     ? "Note changed"
-                    : notes ? "Note added" : "Note removed"
+                    : hasNotes ? "Note added" : "Note removed"
             }
             if before.date != snapshot.date {
                 return "Date changed"
@@ -131,7 +139,8 @@ struct HistoryView: View {
             }
         }
 
-        if action.after.count == 2, let otherID = action.after.first(where: { $0.id != snapshot.id })?.accountId,
+        if action.after.count == 2,
+           let otherID = action.after.first(where: { $0.id != snapshot.id })?.accountId,
            let otherAccount = budgetStore.accounts.first(where: { $0.id == otherID })?.name {
             return "\(account ?? "Account") → \(otherAccount)"
         }
@@ -143,7 +152,7 @@ struct HistoryView: View {
         var parts: [String] = []
         if let category { parts.append(category) }
         if let account { parts.append(account) }
-        if notes { parts.append("Note") }
+        if hasNotes { parts.append("Note") }
         return parts.isEmpty ? action.detail : parts.joined(separator: " · ")
     }
 
@@ -162,6 +171,7 @@ struct HistoryView: View {
 
 private struct HistoryUndoReviewView: View {
     let action: HistoryAction
+    let detail: String
     let confirm: () -> Void
     @Environment(\.dismiss) private var dismiss
 
@@ -170,8 +180,10 @@ private struct HistoryUndoReviewView: View {
             List {
                 Section {
                     Text(action.title).font(.headline)
-                    if let amount = action.amountText { Text(amount).font(.title3.monospacedDigit()) }
-                    Text(action.detail).foregroundStyle(.secondary)
+                    if let amount = action.amountText {
+                        Text(amount).font(.title3.monospacedDigit())
+                    }
+                    Text(detail).foregroundStyle(.secondary)
                 }
                 Section("Restore") {
                     if action.before.isEmpty {
@@ -181,7 +193,7 @@ private struct HistoryUndoReviewView: View {
                         ForEach(action.before) { snapshot in
                             VStack(alignment: .leading, spacing: 3) {
                                 Text(snapshot.payeeName?.isEmpty == false ? snapshot.payeeName! : "Transaction")
-                                Text("\(snapshot.amount < 0 ? "−" : "")$\(String(format: "%.2f", Double(abs(snapshot.amount))/100.0))")
+                                Text("\(snapshot.amount < 0 ? "−" : "")$\(String(format: "%.2f", Double(abs(snapshot.amount)) / 100.0))")
                                     .font(.caption.monospacedDigit())
                                     .foregroundStyle(.secondary)
                             }
@@ -192,8 +204,12 @@ private struct HistoryUndoReviewView: View {
             .navigationTitle("Review Undo")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
-                ToolbarItem(placement: .confirmationAction) { Button("Undo", action: confirm).fontWeight(.semibold) }
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Undo", action: confirm).fontWeight(.semibold)
+                }
             }
         }
     }
