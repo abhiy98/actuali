@@ -205,6 +205,35 @@ final class HistoryObserver {
         } else if remainingAdded.isEmpty, remainingRemoved.isEmpty, !remainingChanged.isEmpty {
             let before = remainingChanged.compactMap { previous[$0.id] }
             HistoryStore.shared.record(budgetID: budgetID, kind: .edited, before: before, after: remainingChanged)
+        } else if !remainingAdded.isEmpty || !remainingRemoved.isEmpty || !remainingChanged.isEmpty {
+            var before: [HistoryTransactionSnapshot] = []
+            var after: [HistoryTransactionSnapshot] = []
+            let ids = Set(remainingAdded.map(\.id))
+                .union(remainingRemoved.map(\.id))
+                .union(remainingChanged.map(\.id))
+                .sorted()
+
+            for id in ids {
+                if let old = previous[id], let new = current[id] {
+                    before.append(HistoryTransactionSnapshot(old))
+                    after.append(HistoryTransactionSnapshot(new))
+                } else if let old = previous[id] {
+                    before.append(HistoryTransactionSnapshot(old))
+                    after.append(Self.tombstoned(old))
+                } else if let new = current[id] {
+                    var absent = HistoryTransactionSnapshot(new)
+                    absent.tombstone = true
+                    before.append(absent)
+                    after.append(HistoryTransactionSnapshot(new))
+                }
+            }
+
+            HistoryStore.shared.recordSnapshots(
+                budgetID: budgetID,
+                kind: .edited,
+                before: before,
+                after: after
+            )
         }
 
         previous = current
