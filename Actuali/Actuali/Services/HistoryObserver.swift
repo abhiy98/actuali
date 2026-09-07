@@ -62,11 +62,17 @@ final class HistoryObserver {
             return
         }
 
+        // The observer serializes publications, but a queued task can still be
+        // stale after the selected budget changes while a child fetch is awaited.
+        // Never let one budget establish the baseline for another.
+        guard budgetID == store.currentBudgetId else { return }
+
         let current = Dictionary(uniqueKeysWithValues: transactions.map { ($0.id, $0) })
         let currentSplitChildren = await fetchSplitChildren(
             for: current.values.filter(\.isParent),
             using: store
         )
+        guard budgetID == store.currentBudgetId else { return }
 
         guard hasBaseline else {
             previous = current
