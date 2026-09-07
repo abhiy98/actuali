@@ -11,7 +11,7 @@ struct HistoryView: View {
                 ContentUnavailableView(
                     "No History Yet",
                     systemImage: "clock",
-                    description: Text("Transactions you add, edit, or delete on this device will appear here.")
+                    description: Text("Transaction changes appear here.")
                 )
             } else {
                 ForEach(historyStore.actions) { action in
@@ -30,8 +30,8 @@ struct HistoryView: View {
                                     .lineLimit(1)
                                     .truncationMode(.tail)
 
-                                if let amount = action.amountText {
-                                    Text(amount)
+                                if let amount = action.primarySnapshot?.amount {
+                                    Text(budgetStore.formatCurrency(amount))
                                         .font(.caption2.monospacedDigit())
                                         .foregroundStyle(.secondary)
                                         .lineLimit(1)
@@ -76,7 +76,8 @@ struct HistoryView: View {
         .sheet(item: $selectedAction) { action in
             HistoryUndoReviewView(
                 action: action,
-                detail: detail(for: action)
+                detail: detail(for: action),
+                formattedAmount: budgetStore.formatCurrency(action.primarySnapshot?.amount ?? 0)
             ) {
                 Task {
                     await historyStore.undo(action, using: budgetStore)
@@ -115,7 +116,7 @@ struct HistoryView: View {
         if action.kind == .edited,
            let before = action.before.first(where: { $0.id == snapshot.id }) {
             if before.amount != snapshot.amount {
-                return "Amount: \(formattedAmount(before.amount)) → \(formattedAmount(snapshot.amount))"
+                return "Amount: \(budgetStore.formatCurrency(before.amount)) → \(budgetStore.formatCurrency(snapshot.amount))"
             }
             if before.categoryName != snapshot.categoryName {
                 return "Category: \(before.categoryName ?? "Uncategorized") → \(snapshot.categoryName ?? "Uncategorized")"
@@ -156,10 +157,6 @@ struct HistoryView: View {
         return parts.isEmpty ? action.detail : parts.joined(separator: " · ")
     }
 
-    private func formattedAmount(_ amount: Int) -> String {
-        "\(amount < 0 ? "−" : "")$\(String(format: "%.2f", Double(abs(amount)) / 100.0))"
-    }
-
     private func symbol(for kind: HistoryActionKind) -> String {
         switch kind {
         case .created: return "plus.circle"
@@ -172,6 +169,7 @@ struct HistoryView: View {
 private struct HistoryUndoReviewView: View {
     let action: HistoryAction
     let detail: String
+    let formattedAmount: String
     let confirm: () -> Void
     @Environment(\.dismiss) private var dismiss
 
@@ -180,8 +178,8 @@ private struct HistoryUndoReviewView: View {
             List {
                 Section {
                     Text(action.title).font(.headline)
-                    if let amount = action.amountText {
-                        Text(amount).font(.title3.monospacedDigit())
+                    if action.primarySnapshot?.amount != nil {
+                        Text(formattedAmount).font(.title3.monospacedDigit())
                     }
                     Text(detail).foregroundStyle(.secondary)
                 }
@@ -193,7 +191,7 @@ private struct HistoryUndoReviewView: View {
                         ForEach(action.before) { snapshot in
                             VStack(alignment: .leading, spacing: 3) {
                                 Text(snapshot.payeeName?.isEmpty == false ? snapshot.payeeName! : "Transaction")
-                                Text("\(snapshot.amount < 0 ? "−" : "")$\(String(format: "%.2f", Double(abs(snapshot.amount)) / 100.0))")
+                                Text(formattedAmountForSnapshot(snapshot))
                                     .font(.caption.monospacedDigit())
                                     .foregroundStyle(.secondary)
                             }
@@ -212,5 +210,14 @@ private struct HistoryUndoReviewView: View {
                 }
             }
         }
+    }
+
+    private func formattedAmountForSnapshot(_ snapshot: HistoryTransactionSnapshot) -> String {
+        CurrencyAmountFormat.string(
+            cents: snapshot.amount,
+            currencyCode: UserDefaults.standard.string(forKey: "currencyCode") ?? "USD",
+            narrowSymbol: UserDefaults.standard.bool(forKey: "useNarrowCurrencySymbol"),
+            numberFormat: .commaDot
+        )
     }
 }
