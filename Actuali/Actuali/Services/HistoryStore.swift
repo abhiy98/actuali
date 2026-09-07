@@ -62,6 +62,15 @@ struct HistoryAction: Identifiable, Codable, Equatable {
 final class HistoryStore: ObservableObject {
     static let shared = HistoryStore()
     static var recordingSuppressed = false
+
+    struct PendingUndo {
+        let budgetID: String
+        let expected: [HistoryTransactionSnapshot]
+        let removedIDs: Set<String>
+    }
+
+    static var pendingUndo: PendingUndo?
+
     @Published private(set) var actions: [HistoryAction] = []
     @Published private(set) var errorMessage: String?
 
@@ -91,23 +100,32 @@ final class HistoryStore: ObservableObject {
             if expected.tombstone { if live[expected.id] != nil { errorMessage="This action changed after it was recorded, so it cannot be safely undone."; return } }
             else if live[expected.id].map(HistoryTransactionSnapshot.init) != expected { errorMessage="This action changed after it was recorded, so it cannot be safely undone."; return }
         }
-        Self.recordingSuppressed=true; defer { Self.recordingSuppressed=false }
+
+        let expected = action.kind == .created ? [] : action.before
+        let removedIDs = Set(action.kind == .created ? action.after.map(\HistoryTransactionSnapshot.id) : [])
+        Self.pendingUndo = PendingUndo(budgetID: action.budgetID, expected: expected, removedIDs: removedIDs)
+        Self.recordingSuppressed=true
         do {
             switch action.kind {
             case .created:
                 budgetStore.error=nil
                 await budgetStore.deleteTransactions(action.after.filter { $0.parentId == nil }.map { $0.transaction() })
-                guard budgetStore.error == nil else { errorMessage=budgetStore.error; return }
+                guard budgetStore.error == nil else { errorMessage=budgetStore.error; finishUndoRecording(); return }
             case .edited, .deleted:
                 let afterByID=Dictionary(uniqueKeysWithValues: action.after.map { ($0.id,$0) })
                 for previous in action.before {
-                    guard let recordedAfter=afterByID[previous.id] else { errorMessage="The recorded action is incomplete and cannot be safely undone."; return }
+                    guard let recordedAfter=afterByID[previous.id] else { errorMessage="The recorded action is incomplete and cannot be safely undone."; finishUndoRecording(); return }
                     try await budgetStore.updateTransaction(previous.transaction(), original: recordedAfter.transaction())
                 }
             }
-        } catch { errorMessage=error.localizedDescription; return }
-        guard let index=actions.firstIndex(where: { $0.id == action.id }) else { return }
+        } catch { errorMessage=error.localizedDescription; finishUndoRecording(); return }
+        guard let index=actions.firstIndex(where: { $0.id == action.id }) else { finishUndoRecording(); return }
         actions[index].status = .undone; save(action.budgetID)
+    }
+
+    static func finishUndoRecording() {
+        recordingSuppressed=false
+        pendingUndo=nil
     }
 
     #if DEBUG
