@@ -25,13 +25,13 @@ struct HistoryStoreTests {
         )
     }
 
-    @Test func retainsNewest25Actions() {
+    @Test func retainsNewest10Actions() {
         let suite = "HistoryStoreTests-\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: suite)!
         defer { defaults.removePersistentDomain(forName: suite) }
         let store = HistoryStore(defaults: defaults)
 
-        for index in 0..<26 {
+        for index in 0..<11 {
             store.record(
                 budgetID: "budget",
                 kind: .created,
@@ -40,11 +40,11 @@ struct HistoryStoreTests {
             )
         }
 
-        #expect(store.actions.count == 25)
+        #expect(store.actions.count == 10)
         #expect(store.actions.allSatisfy { $0.status == .applied })
         #expect(store.actions.allSatisfy { $0.after.count == 1 })
         #expect(store.actions.contains { $0.after.first?.id == "0" } == false)
-        #expect(store.actions.contains { $0.after.first?.id == "25" })
+        #expect(store.actions.contains { $0.after.first?.id == "10" })
     }
 
     @Test func actionsPersistAndReload() {
