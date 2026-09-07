@@ -3710,7 +3710,7 @@ final class BudgetStore: ObservableObject {
 
         try await syncClient.updateTransactions(
             transactions,
-            changedFields: Array(changedFields)
+            changedFields: changedFields
         )
         await refreshDataOnly()
     }
