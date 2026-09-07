@@ -26,7 +26,7 @@ struct HistoryView: View {
                             Text(action.title)
                                 .foregroundStyle(action.status == .undone ? .secondary : .primary)
                                 .lineLimit(1)
-                            Text(action.detail)
+                            Text(detail(for: action))
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
                                 .lineLimit(1)
@@ -86,6 +86,60 @@ struct HistoryView: View {
     private func load() {
         guard let budgetID = budgetStore.currentBudgetId else { return }
         historyStore.load(budgetID: budgetID)
+    }
+
+    private func detail(for action: HistoryAction) -> String {
+        guard let snapshot = action.primarySnapshot else { return action.detail }
+
+        let date = Transaction.formattedDate(from: snapshot.date)
+        let account = budgetStore.accounts.first(where: { $0.id == snapshot.accountId })?.name
+        let category = snapshot.categoryName?.isEmpty == false ? snapshot.categoryName : nil
+        let notes = snapshot.notes?.isEmpty == false
+
+        if action.kind == .edited, let before = action.before.first(where: { $0.id == snapshot.id }) {
+            if before.amount != snapshot.amount {
+                return "Amount: \(formattedAmount(before.amount)) → \(formattedAmount(snapshot.amount))"
+            }
+            if before.categoryName != snapshot.categoryName {
+                return "Category: \(before.categoryName ?? "Uncategorized") → \(snapshot.categoryName ?? "Uncategorized")"
+            }
+            if before.payeeName != snapshot.payeeName {
+                return "Payee: \(before.payeeName ?? "Transaction") → \(snapshot.payeeName ?? "Transaction")"
+            }
+            if before.notes != snapshot.notes {
+                return before.notes?.isEmpty == false && notes
+                    ? "Note changed"
+                    : notes ? "Note added" : "Note removed"
+            }
+            if before.date != snapshot.date {
+                return "Date: \(Transaction.formattedDate(from: before.date)) → \(date)"
+            }
+            if before.cleared != snapshot.cleared {
+                return snapshot.cleared ? "Marked cleared" : "Marked uncleared"
+            }
+            if before.reconciled != snapshot.reconciled {
+                return snapshot.reconciled ? "Marked reconciled" : "Marked unreconciled"
+            }
+        }
+
+        if action.after.count == 2, let otherID = action.after.first(where: { $0.id != snapshot.id })?.accountId,
+           let otherAccount = budgetStore.accounts.first(where: { $0.id == otherID })?.name {
+            return "\(date) · \(account ?? "Account") → \(otherAccount)"
+        }
+
+        if snapshot.isParent, let portions = snapshot.splitPortions, !portions.isEmpty {
+            return "\(date) · \(portions.count) categories · \(account ?? "Account")"
+        }
+
+        var parts = [date]
+        if let category { parts.append(category) }
+        if let account { parts.append(account) }
+        if notes { parts.append("Note") }
+        return parts.joined(separator: " · ")
+    }
+
+    private func formattedAmount(_ amount: Int) -> String {
+        "\(amount < 0 ? "−" : "")$\(String(format: "%.2f", Double(abs(amount)) / 100.0))"
     }
 
     private func symbol(for kind: HistoryActionKind) -> String {
