@@ -44,6 +44,14 @@ final class HistoryObserver {
             return
         }
 
+        if let pendingUndo = HistoryStore.pendingUndo {
+            previous = current
+            if pendingUndo.budgetID == budgetID && Self.matchesPendingUndo(pendingUndo, current: current) {
+                HistoryStore.finishUndoRecording()
+            }
+            return
+        }
+
         if HistoryStore.recordingSuppressed || store.isBankSyncing {
             previous = current
             return
@@ -72,6 +80,14 @@ final class HistoryObserver {
 
         previous = current
         previousBudgetID = budgetID
+    }
+
+    private static func matchesPendingUndo(_ pending: HistoryStore.PendingUndo, current: [String: Transaction]) -> Bool {
+        let expectedByID = Dictionary(uniqueKeysWithValues: pending.expected.map { ($0.id, $0) })
+        for expected in expectedByID.values {
+            guard let actual = current[expected.id], HistoryTransactionSnapshot(actual) == expected else { return false }
+        }
+        return pending.removedIDs.allSatisfy { current[$0] == nil }
     }
 
     private static func tombstoned(_ transaction: Transaction) -> Transaction {
