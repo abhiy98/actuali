@@ -86,7 +86,7 @@ final class HistoryStore: ObservableObject {
         guard !Self.recordingSuppressed, !before.isEmpty || !after.isEmpty else { return }
         actions.insert(HistoryAction(id: UUID().uuidString, createdAt: Date(), budgetID: budgetID, kind: kind,
                                      before: before.map(HistoryTransactionSnapshot.init), after: after.map(HistoryTransactionSnapshot.init), status: .applied), at: 0)
-        actions = Array(actions.prefix(25)); save(budgetID)
+        actions = Array(actions.prefix(10)); save(budgetID)
     }
 
     func canUndo(_ action: HistoryAction) -> Bool { action.status == .applied && actions.first(where: { $0.status == .applied })?.id == action.id }
@@ -129,7 +129,7 @@ final class HistoryStore: ObservableObject {
     }
 
     #if DEBUG
-    func appendForTesting(_ action: HistoryAction, budgetID: String) { actions.insert(action, at: 0); actions=Array(actions.prefix(25)); save(budgetID) }
+    func appendForTesting(_ action: HistoryAction, budgetID: String) { actions.insert(action, at: 0); actions=Array(actions.prefix(10)); save(budgetID) }
     #endif
 
     private func key(_ budgetID: String) -> String { "history.actions.\(budgetID)" }
