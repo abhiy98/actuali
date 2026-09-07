@@ -104,22 +104,6 @@ final class HistoryObserver {
     // topology edits (for example adding/removing split lines) are not logged,
     // and remote transaction changes cannot be perfectly distinguished here.
     private static func samePersistedState(_ lhs: Transaction, _ rhs: Transaction) -> Bool {
-        lhs.id == rhs.id &&
-        lhs.accountId == rhs.accountId &&
-        lhs.date == rhs.date &&
-        lhs.amount == rhs.amount &&
-        lhs.payeeId == rhs.payeeId &&
-        lhs.categoryId == rhs.categoryId &&
-        lhs.notes == rhs.notes &&
-        lhs.cleared == rhs.cleared &&
-        lhs.reconciled == rhs.reconciled &&
-        lhs.transferId == rhs.transferId &&
-        lhs.isParent == rhs.isParent &&
-        lhs.parentId == rhs.parentId &&
-        lhs.tombstone == rhs.tombstone &&
-        lhs.importedPayee == rhs.importedPayee &&
-        lhs.schedule == rhs.schedule &&
-        lhs.financialId == rhs.financialId &&
-        lhs.startingBalanceFlag == rhs.startingBalanceFlag
+        HistoryTransactionSnapshot(lhs).matchesLiveTransaction(rhs)
     }
 }

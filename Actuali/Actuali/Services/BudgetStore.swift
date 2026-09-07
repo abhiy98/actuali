@@ -3582,6 +3582,7 @@ final class BudgetStore: ObservableObject {
         )
 
         try await syncClient.createTransfer(source: source, target: target)
+        await publishTransactionsImmediately([sourceId, targetId])
         await refreshDataOnly()
     }
 
@@ -3685,6 +3686,45 @@ final class BudgetStore: ObservableObject {
         let changedFields = Self.changedFields(original: original, updated: updated)
         try await syncClient.updateTransaction(updated, changedFields: changedFields)
         await refreshDataOnly()
+    }
+
+    /// Restore several transaction rows as one sync write. History uses this
+    /// for multi-row Undo so a transfer or split does not intentionally issue
+    /// one independent write per leg.
+    func restoreTransactions(
+        _ transactions: [Transaction],
+        from recordedAfter: [Transaction]
+    ) async throws {
+        guard let syncClient else {
+            throw BudgetStoreError.syncNotConfigured
+        }
+        guard transactions.count == recordedAfter.count else {
+            throw BudgetStoreError.syncNotConfigured
+        }
+
+        var changedFields = Set<String>()
+        for (updated, original) in zip(transactions, recordedAfter) {
+            changedFields.formUnion(Self.changedFields(original: original, updated: updated))
+        }
+        guard !changedFields.isEmpty else { return }
+
+        try await syncClient.updateTransactions(
+            transactions,
+            changedFields: Array(changedFields)
+        )
+        await refreshDataOnly()
+    }
+
+    /// Publish rows that have just been committed before the normal refresh.
+    /// History observes `transactions`, so this keeps every creation shape
+    /// consistent without changing the database's authoritative read path.
+    private func publishTransactionsImmediately(_ ids: [String]) async {
+        guard let database else { return }
+        for id in ids {
+            guard let saved = try? await database.fetchTransaction(id: id) else { continue }
+            transactions.removeAll { $0.id == saved.id }
+            transactions.append(saved)
+        }
     }
 
     /// Children share their parent's account, date and cleared state; keep
@@ -4315,6 +4355,7 @@ final class BudgetStore: ObservableObject {
                 throw BudgetStoreError.syncNotConfigured
             }
             try await syncClient.createSplit(parent: parent, children: children)
+            await publishTransactionsImmediately([parent.id] + children.map(\.id))
             await refreshDataOnly()
             if form.recordLocation, let payeeId {
                 recordPayeeLocationIfAppropriate(payeeId: payeeId)
