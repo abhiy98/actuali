@@ -96,9 +96,9 @@ final class HistoryObserver {
         return copy
     }
 
-    // Payee/category display names, transfer display data, and split portions
-    // are derived during reads. Comparing only persisted transaction state
-    // avoids recording a history row for a plain refresh or rename.
+    // Payee/category display names, transfer display data, split portions,
+    // and sort order are derived or normalized during reads. Comparing only
+    // transaction content avoids recording a history row for a plain refresh.
     // ponytail: observing the published snapshot keeps this change small and
     // avoids duplicating every BudgetStore mutation path. Ceiling: mixed
     // topology edits (for example adding/removing split lines) are not logged,
@@ -117,7 +117,6 @@ final class HistoryObserver {
         lhs.isParent == rhs.isParent &&
         lhs.parentId == rhs.parentId &&
         lhs.tombstone == rhs.tombstone &&
-        lhs.sortOrder == rhs.sortOrder &&
         lhs.importedPayee == rhs.importedPayee &&
         lhs.schedule == rhs.schedule &&
         lhs.financialId == rhs.financialId &&
