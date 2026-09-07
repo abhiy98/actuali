@@ -12,6 +12,7 @@ import UserNotifications
 struct ActualiApp: App {
     @UIApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     @StateObject private var budgetStore = BudgetStore.shared
+    @State private var historyObserver: HistoryObserver?
     @Environment(\.scenePhase) private var scenePhase
 
     init() {
@@ -46,6 +47,9 @@ struct ActualiApp: App {
                 .environmentObject(budgetStore)
                 .preferredColorScheme(budgetStore.appearanceMode.colorScheme)
                 .task {
+                    if historyObserver == nil {
+                        historyObserver = HistoryObserver(store: budgetStore)
+                    }
                     #if DEBUG
                     if CommandLine.arguments.contains("-loadDemoData") {
                         await budgetStore.loadDemoData(
