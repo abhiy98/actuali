@@ -5,6 +5,7 @@ import Foundation
 final class HistoryObserver {
     private var cancellables = Set<AnyCancellable>()
     private var previousBudgetID: String?
+    private var hasBaseline = false
     private var previous: [String: Transaction] = [:]
     private var previousSplitChildren: [String: [String: Transaction]] = [:]
     private var consumeTask: Task<Void, Never>?
@@ -17,6 +18,7 @@ final class HistoryObserver {
                 guard let self, let store else { return }
                 if budgetID != self.previousBudgetID {
                     self.previousBudgetID = budgetID
+                    self.hasBaseline = false
                     self.previous = [:]
                     self.previousSplitChildren = [:]
                     // Wait for the corresponding transaction publication. The
@@ -58,6 +60,7 @@ final class HistoryObserver {
         transactions: [Transaction]
     ) async {
         guard let budgetID else {
+            hasBaseline = false
             previous = [:]
             previousSplitChildren = [:]
             return
@@ -69,10 +72,11 @@ final class HistoryObserver {
             using: store
         )
 
-        guard !previous.isEmpty else {
+        guard hasBaseline else {
             previous = current
             previousSplitChildren = currentSplitChildren
             previousBudgetID = budgetID
+            hasBaseline = true
             return
         }
 
