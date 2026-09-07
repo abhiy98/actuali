@@ -31,7 +31,6 @@ struct HistoryView: View {
 
                                 if let amount = action.amountText {
                                     Text(amount)
-                                        .font(.callout.monospacedDigit())
                                         .foregroundStyle(.secondary)
                                         .lineLimit(1)
                                         .fixedSize(horizontal: true, vertical: false)
@@ -39,7 +38,6 @@ struct HistoryView: View {
                             }
 
                             Text(detail(for: action))
-                                .font(.caption)
                                 .foregroundStyle(.secondary)
                                 .lineLimit(1)
                                 .truncationMode(.tail)
@@ -50,7 +48,7 @@ struct HistoryView: View {
 
                         if action.status == .undone {
                             Text("Undone")
-                                .font(.caption.weight(.semibold))
+                                .font(.subheadline)
                                 .foregroundStyle(.secondary)
                                 .lineLimit(1)
                                 .fixedSize(horizontal: true, vertical: false)
