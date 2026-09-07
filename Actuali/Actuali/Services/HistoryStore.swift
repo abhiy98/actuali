@@ -186,6 +186,7 @@ final class HistoryStore: ObservableObject {
 
     @Published private(set) var actions: [HistoryAction] = []
     @Published private(set) var errorMessage: String?
+    @Published private(set) var errorTitle = "Couldn't Undo"
 
     private let defaults: UserDefaults
 
@@ -200,16 +201,19 @@ final class HistoryStore: ObservableObject {
         }
         guard let decoded = try? JSONDecoder().decode([HistoryAction].self, from: data) else {
             actions = []
+            errorTitle = "Couldn't Load History"
             errorMessage = "History couldn't be loaded. New history will continue from here."
             return
         }
         errorMessage = nil
+        errorTitle = "Couldn't Undo"
         actions = decoded.sorted { $0.createdAt > $1.createdAt }
     }
 
     func clearLoadedActions() {
         actions = []
         errorMessage = nil
+        errorTitle = "Couldn't Undo"
     }
 
     func record(budgetID: String, kind: HistoryActionKind, before: [Transaction], after: [Transaction]) {
@@ -236,11 +240,13 @@ final class HistoryStore: ObservableObject {
 
     func clearError() {
         errorMessage = nil
+        errorTitle = "Couldn't Undo"
     }
 
     func undo(_ action: HistoryAction, using budgetStore: BudgetStore) async {
         guard canUndo(action), action.budgetID == budgetStore.currentBudgetId else { return }
         errorMessage = nil
+        errorTitle = "Couldn't Undo"
 
         let live = Dictionary(uniqueKeysWithValues: budgetStore.transactions.map { ($0.id, $0) })
         for expected in action.after {
