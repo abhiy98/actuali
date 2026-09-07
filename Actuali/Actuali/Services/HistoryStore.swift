@@ -195,8 +195,7 @@ final class HistoryStore: ObservableObject {
 
     func load(budgetID: String) {
         guard let data = defaults.data(forKey: key(budgetID)) else {
-            actions = []
-            errorMessage = nil
+            clearLoadedActions()
             return
         }
         guard let decoded = try? JSONDecoder().decode([HistoryAction].self, from: data) else {
@@ -206,6 +205,11 @@ final class HistoryStore: ObservableObject {
         }
         errorMessage = nil
         actions = decoded.sorted { $0.createdAt > $1.createdAt }
+    }
+
+    func clearLoadedActions() {
+        actions = []
+        errorMessage = nil
     }
 
     func record(budgetID: String, kind: HistoryActionKind, before: [Transaction], after: [Transaction]) {
