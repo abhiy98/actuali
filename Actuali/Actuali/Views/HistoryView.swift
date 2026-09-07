@@ -25,14 +25,14 @@ struct HistoryView: View {
                         VStack(alignment: .leading, spacing: 1) {
                             HStack(spacing: 6) {
                                 Text(action.title)
-                                    .font(.caption)
+                                    .font(.caption2)
                                     .foregroundStyle(action.status == .undone ? .secondary : .primary)
                                     .lineLimit(1)
                                     .truncationMode(.tail)
 
                                 if let amount = action.amountText {
                                     Text(amount)
-                                        .font(.caption.monospacedDigit())
+                                        .font(.caption2.monospacedDigit())
                                         .foregroundStyle(.secondary)
                                         .lineLimit(1)
                                         .fixedSize(horizontal: true, vertical: false)
@@ -40,7 +40,7 @@ struct HistoryView: View {
                             }
 
                             Text(detail(for: action))
-                                .font(.caption)
+                                .font(.caption2)
                                 .foregroundStyle(.secondary)
                                 .lineLimit(1)
                                 .truncationMode(.tail)
@@ -51,13 +51,13 @@ struct HistoryView: View {
 
                         if action.status == .undone {
                             Text("Undone")
-                                .font(.caption)
+                                .font(.caption2)
                                 .foregroundStyle(.secondary)
                                 .lineLimit(1)
                                 .fixedSize(horizontal: true, vertical: false)
                         } else if historyStore.canUndo(action) {
                             Button("Undo") { selectedAction = action }
-                                .font(.caption)
+                                .font(.caption2)
                                 .frame(minWidth: 44, alignment: .trailing)
                                 .fixedSize(horizontal: true, vertical: false)
                         }
