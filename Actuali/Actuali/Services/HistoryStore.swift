@@ -377,52 +377,46 @@ final class HistoryStore: ObservableObject {
         )
         Self.recordingSuppressed = true
 
-        do {
-            switch action.kind {
-            case .created:
-                budgetStore.error = nil
-                await budgetStore.deleteTransactions(
-                    action.after
-                        .filter { $0.parentId == nil }
-                        .map { $0.transaction() }
+        switch action.kind {
+        case .created:
+            budgetStore.error = nil
+            await budgetStore.deleteTransactions(
+                action.after
+                    .filter { $0.parentId == nil }
+                    .map { $0.transaction() }
+            )
+            guard budgetStore.error == nil else {
+                errorMessage = budgetStore.error
+                Self.finishUndoRecording()
+                return
+            }
+        case .edited, .deleted:
+            let recordedAfterForRestore = action.before.map { previous in
+                afterByID[previous.id] ?? Self.tombstoned(previous)
+            }
+            do {
+                try await budgetStore.restoreTransactions(
+                    action.before.map { $0.transaction() },
+                    from: recordedAfterForRestore.map { $0.transaction() }
                 )
-                guard budgetStore.error == nil else {
-                    errorMessage = budgetStore.error
-                    Self.finishUndoRecording()
-                    return
-                }
-            case .edited, .deleted:
-                let recordedAfterForRestore = action.before.map { previous in
-                    afterByID[previous.id] ?? Self.tombstoned(previous)
-                }
+            } catch {
+                // The underlying batch API processes rows sequentially today.
+                // Compensate on failure so a multi-row Undo does not remain
+                // partially restored when one row fails.
                 do {
                     try await budgetStore.restoreTransactions(
-                        action.before.map { $0.transaction() },
-                        from: recordedAfterForRestore.map { $0.transaction() }
+                        recordedAfterForRestore.map { $0.transaction() },
+                        from: action.before.map { $0.transaction() }
                     )
                 } catch {
-                    // The underlying batch API processes rows sequentially today.
-                    // Compensate on failure so a multi-row Undo does not remain
-                    // partially restored when one row fails.
-                    do {
-                        try await budgetStore.restoreTransactions(
-                            recordedAfterForRestore.map { $0.transaction() },
-                            from: action.before.map { $0.transaction() }
-                        )
-                    } catch {
-                        errorMessage = String(localized: "Undo failed and the previous state could not be restored. Please reopen the budget and verify these transactions.")
-                        Self.finishUndoRecording()
-                        return
-                    }
-                    errorMessage = error.localizedDescription
+                    errorMessage = String(localized: "Undo failed and the previous state could not be restored. Please reopen the budget and verify these transactions.")
                     Self.finishUndoRecording()
                     return
                 }
+                errorMessage = error.localizedDescription
+                Self.finishUndoRecording()
+                return
             }
-        } catch {
-            errorMessage = error.localizedDescription
-            Self.finishUndoRecording()
-            return
         }
 
         guard let index = actions.firstIndex(where: { $0.id == action.id }) else {
