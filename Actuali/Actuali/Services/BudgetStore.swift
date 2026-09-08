@@ -136,6 +136,7 @@ final class BudgetStore: ObservableObject {
     // MARK: - Published State
 
     @Published var isLoading = false
+    private(set) var isBudgetLoaded = false
     @Published var downloadingBudgetId: String?
     /// Global error alert (rendered in ContentView) for background/destructive operation failures (e.g. delete); form-local errors (e.g. saveTransaction validation) stay in the presenting view.
     @Published var error: String?
@@ -2057,6 +2058,7 @@ final class BudgetStore: ObservableObject {
 
     func loadLocalBudget(_ budgetId: String) async {
         isLoading = true
+        isBudgetLoaded = false
         error = nil
         let monthRequestGenerationBeforeLoad = budgetMonthRequestGeneration
         var published = false
@@ -2153,6 +2155,9 @@ final class BudgetStore: ObservableObject {
             cardAccountMappings = fetchedCardMappings.merging(legacyCardMappings) { synced, _ in synced }
             
             accounts = fetchedAccounts
+            // Let observers establish their baseline before the transaction
+            // publication is visible as a user change.
+            isBudgetLoaded = true
             transactions = fetchedTransactions
             uncategorizedCount = fetchedUncategorizedCount
             categoryGroups = fetchedGroups

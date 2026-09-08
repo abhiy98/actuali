@@ -141,23 +141,23 @@ struct HistoryAction: Identifiable, Codable, Equatable {
     var title: String {
         if after.count == 2, after.allSatisfy({ $0.transferId != nil }) {
             switch kind {
-            case .created: return "Created transfer"
-            case .edited: return "Edited transfer"
-            case .deleted: return "Deleted transfer"
+            case .created: return String(localized: "Created transfer")
+            case .edited: return String(localized: "Edited transfer")
+            case .deleted: return String(localized: "Deleted transfer")
             }
         }
         if after.contains(where: { $0.isParent }) || before.contains(where: { $0.isParent }) {
             switch kind {
-            case .created: return "Added split transaction"
-            case .edited: return "Edited split transaction"
-            case .deleted: return "Deleted split transaction"
+            case .created: return String(localized: "Added split transaction")
+            case .edited: return String(localized: "Edited split transaction")
+            case .deleted: return String(localized: "Deleted split transaction")
             }
         }
         let name = primarySnapshot?.payeeName.flatMap { $0.isEmpty ? nil : $0 } ?? "Transaction"
         switch kind {
-        case .created: return "Added \(name)"
-        case .edited: return "Edited \(name)"
-        case .deleted: return "Deleted \(name)"
+        case .created: return String(format: String(localized: "Added %@"), name)
+        case .edited: return String(format: String(localized: "Edited %@"), name)
+        case .deleted: return String(format: String(localized: "Deleted %@"), name)
         }
     }
 
@@ -181,7 +181,7 @@ final class HistoryStore: ObservableObject {
 
     @Published private(set) var actions: [HistoryAction] = []
     @Published private(set) var errorMessage: String?
-    @Published private(set) var errorTitle = "Couldn't Undo"
+    @Published private(set) var errorTitle = String(localized: "Couldn't Undo")
 
     private let defaults: UserDefaults
     private var loadedBudgetID: String?
@@ -199,12 +199,12 @@ final class HistoryStore: ObservableObject {
         }
         guard let decoded = try? JSONDecoder().decode([HistoryAction].self, from: data) else {
             actions = []
-            errorTitle = "Couldn't Load History"
-            errorMessage = "History couldn't be loaded. New history will continue from here."
+            errorTitle = String(localized: "Couldn't Load History")
+            errorMessage = String(localized: "History couldn't be loaded. New history will continue from here.")
             return
         }
         errorMessage = nil
-        errorTitle = "Couldn't Undo"
+        errorTitle = String(localized: "Couldn't Undo")
         actions = decoded
             .filter { $0.budgetID == budgetID }
             .sorted { $0.createdAt > $1.createdAt }
@@ -214,7 +214,7 @@ final class HistoryStore: ObservableObject {
         actions = []
         loadedBudgetID = nil
         errorMessage = nil
-        errorTitle = "Couldn't Undo"
+        errorTitle = String(localized: "Couldn't Undo")
     }
 
     func record(
@@ -292,7 +292,7 @@ final class HistoryStore: ObservableObject {
         }
 
         errorMessage = nil
-        errorTitle = "Couldn't Undo"
+        errorTitle = String(localized: "Couldn't Undo")
         actions.insert(
             HistoryAction(
                 id: UUID().uuidString,
@@ -317,13 +317,13 @@ final class HistoryStore: ObservableObject {
 
     func clearError() {
         errorMessage = nil
-        errorTitle = "Couldn't Undo"
+        errorTitle = String(localized: "Couldn't Undo")
     }
 
     func undo(_ action: HistoryAction, using budgetStore: BudgetStore) async {
         guard canUndo(action), action.budgetID == budgetStore.currentBudgetId else { return }
         errorMessage = nil
-        errorTitle = "Couldn't Undo"
+        errorTitle = String(localized: "Couldn't Undo")
 
         var live = Dictionary(uniqueKeysWithValues: budgetStore.transactions.map { ($0.id, $0) })
         let splitParentIDs = Set(
@@ -340,7 +340,7 @@ final class HistoryStore: ObservableObject {
         for expected in action.before {
             guard let recordedAfter = afterByID[expected.id] else {
                 guard live[expected.id] == nil else {
-                    errorMessage = "This action changed after it was recorded, so it cannot be safely undone."
+                    errorMessage = String(localized: "This action changed after it was recorded, so it cannot be safely undone.")
                     return
                 }
                 continue
@@ -348,14 +348,14 @@ final class HistoryStore: ObservableObject {
 
             if recordedAfter.tombstone {
                 if live[expected.id] != nil {
-                    errorMessage = "This action changed after it was recorded, so it cannot be safely undone."
+                    errorMessage = String(localized: "This action changed after it was recorded, so it cannot be safely undone.")
                     return
                 }
             } else if let actual = live[expected.id], !recordedAfter.matchesLiveTransaction(actual) {
-                errorMessage = "This action changed after it was recorded, so it cannot be safely undone."
+                errorMessage = String(localized: "This action changed after it was recorded, so it cannot be safely undone.")
                 return
             } else if live[expected.id] == nil {
-                errorMessage = "This action changed after it was recorded, so it cannot be safely undone."
+                errorMessage = String(localized: "This action changed after it was recorded, so it cannot be safely undone.")
                 return
             }
         }
@@ -410,7 +410,7 @@ final class HistoryStore: ObservableObject {
                             from: action.before.map { $0.transaction() }
                         )
                     } catch {
-                        errorMessage = "Undo failed and the previous state could not be restored. Please reopen the budget and verify these transactions."
+                        errorMessage = String(localized: "Undo failed and the previous state could not be restored. Please reopen the budget and verify these transactions.")
                         Self.finishUndoRecording()
                         return
                     }

@@ -62,6 +62,8 @@ final class HistoryObserver {
             return
         }
 
+        guard store.isBudgetLoaded else { return }
+
         // The observer serializes publications, but a queued task can still be
         // stale after the selected budget changes while a child fetch is awaited.
         // Never let one budget establish the baseline for another.

@@ -9,9 +9,9 @@ struct HistoryView: View {
         List {
             if historyStore.actions.isEmpty {
                 ContentUnavailableView(
-                    "No History Yet",
+                    String(localized: "No History Yet"),
                     systemImage: "clock",
-                    description: Text("Transaction changes appear here.")
+                    description: Text(String(localized: "Transaction changes appear here."))
                 )
             } else {
                 ForEach(historyStore.actions) { action in
@@ -50,14 +50,14 @@ struct HistoryView: View {
                         Spacer(minLength: 4)
 
                         if action.status == .undone {
-                            Text("Undone")
+                            Text(String(localized: "Undone"))
                                 .font(.caption2)
                                 .foregroundStyle(.secondary)
                                 .lineLimit(1)
                                 .fixedSize(horizontal: true, vertical: false)
-                                .accessibilityLabel("Undone")
+                                .accessibilityLabel(String(localized: "Undone"))
                         } else if historyStore.canUndo(action) {
-                            Button("Undo") { selectedAction = action }
+                            Button(String(localized: "Undo")) { selectedAction = action }
                                 .font(.caption2)
                                 .frame(minWidth: 44, alignment: .trailing)
                                 .fixedSize(horizontal: true, vertical: false)
@@ -70,7 +70,7 @@ struct HistoryView: View {
             }
         }
         .listStyle(.plain)
-        .navigationTitle("History")
+        .navigationTitle(String(localized: "History"))
         .task(id: budgetStore.currentBudgetId) { load() }
         .refreshable { load() }
         .sheet(item: $selectedAction) { action in
@@ -116,44 +116,64 @@ struct HistoryView: View {
         if action.kind == .edited,
            let before = action.before.first(where: { $0.id == snapshot.id }) {
             if before.amount != snapshot.amount {
-                return "Amount: \(budgetStore.formatCurrency(before.amount)) → \(budgetStore.formatCurrency(snapshot.amount))"
+                return String(
+                    format: String(localized: "Amount: %@ → %@"),
+                    budgetStore.formatCurrency(before.amount),
+                    budgetStore.formatCurrency(snapshot.amount)
+                )
             }
             if before.categoryName != snapshot.categoryName {
-                return "Category: \(before.categoryName ?? "Uncategorized") → \(snapshot.categoryName ?? "Uncategorized")"
+                return String(
+                    format: String(localized: "Category: %@ → %@"),
+                    before.categoryName ?? String(localized: "Uncategorized"),
+                    snapshot.categoryName ?? String(localized: "Uncategorized")
+                )
             }
             if before.payeeName != snapshot.payeeName {
-                return "Payee: \(before.payeeName ?? "Transaction") → \(snapshot.payeeName ?? "Transaction")"
+                return String(
+                    format: String(localized: "Payee: %@ → %@"),
+                    before.payeeName ?? String(localized: "Transaction"),
+                    snapshot.payeeName ?? String(localized: "Transaction")
+                )
             }
             if before.notes != snapshot.notes {
                 return before.notes?.isEmpty == false && hasNotes
-                    ? "Note changed"
-                    : hasNotes ? "Note added" : "Note removed"
+                    ? String(localized: "Note changed")
+                    : hasNotes ? String(localized: "Note added") : String(localized: "Note removed")
             }
             if before.date != snapshot.date {
-                return "Date changed"
+                return String(localized: "Date changed")
             }
             if before.cleared != snapshot.cleared {
-                return snapshot.cleared ? "Marked cleared" : "Marked uncleared"
+                return snapshot.cleared ? String(localized: "Marked cleared") : String(localized: "Marked uncleared")
             }
             if before.reconciled != snapshot.reconciled {
-                return snapshot.reconciled ? "Marked reconciled" : "Marked unreconciled"
+                return snapshot.reconciled ? String(localized: "Marked reconciled") : String(localized: "Marked unreconciled")
             }
         }
 
         if action.after.count == 2,
            let otherID = action.after.first(where: { $0.id != snapshot.id })?.accountId,
            let otherAccount = budgetStore.accounts.first(where: { $0.id == otherID })?.name {
-            return "\(account ?? "Account") → \(otherAccount)"
+            return String(
+                format: String(localized: "%@ → %@"),
+                account ?? String(localized: "Account"),
+                otherAccount
+            )
         }
 
         if snapshot.isParent, let portions = snapshot.splitPortions, !portions.isEmpty {
-            return "\(portions.count) categories · \(account ?? "Account")"
+            return String(
+                format: String(localized: "%@ categories · %@"),
+                String(portions.count),
+                account ?? String(localized: "Account")
+            )
         }
 
         var parts: [String] = []
         if let category { parts.append(category) }
         if let account { parts.append(account) }
-        if hasNotes { parts.append("Note") }
+        if hasNotes { parts.append(String(localized: "Note")) }
         return parts.isEmpty ? action.detail : parts.joined(separator: " · ")
     }
 
@@ -185,7 +205,7 @@ private struct HistoryUndoReviewView: View {
                 }
                 Section("Restore") {
                     if action.before.isEmpty {
-                        Text("The transaction(s) created by this action will be removed.")
+                        Text(String(localized: "The transaction(s) created by this action will be removed."))
                             .foregroundStyle(.secondary)
                     } else {
                         ForEach(action.before) { snapshot in
@@ -199,14 +219,14 @@ private struct HistoryUndoReviewView: View {
                     }
                 }
             }
-            .navigationTitle("Review Undo")
+            .navigationTitle(String(localized: "Review Undo"))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") { dismiss() }
+                    Button(String(localized: "Cancel")) { dismiss() }
                 }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("Undo", action: confirm).fontWeight(.semibold)
+                    Button(String(localized: "Undo"), action: confirm).fontWeight(.semibold)
                 }
             }
         }
