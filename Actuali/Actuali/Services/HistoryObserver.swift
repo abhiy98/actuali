@@ -221,7 +221,9 @@ final class HistoryObserver {
                     after.append(HistoryTransactionSnapshot(new))
                 } else if let old = previous[id] {
                     before.append(HistoryTransactionSnapshot(old))
-                    after.append(Self.tombstoned(old))
+                    var tombstoned = HistoryTransactionSnapshot(old)
+                    tombstoned.tombstone = true
+                    after.append(tombstoned)
                 } else if let new = current[id] {
                     var absent = HistoryTransactionSnapshot(new)
                     absent.tombstone = true
