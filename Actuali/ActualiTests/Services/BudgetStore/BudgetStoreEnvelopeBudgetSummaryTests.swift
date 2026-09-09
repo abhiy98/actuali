@@ -45,4 +45,68 @@ struct BudgetStoreEnvelopeBudgetSummaryTests {
         #expect(BudgetStore.shiftBudgetMonth("2026-01", by: -1) == "2025-12")
         #expect(BudgetStore.shiftBudgetMonth("2026-12", by: 1) == "2027-01")
     }
+
+    @Test("Summary reconciles available funds, overspending, budgeted amount, and To Budget")
+    func summaryReconciliation() {
+        let summary = BudgetStore.makeEnvelopeBudgetSummary(
+            availableFunds: 1_500,
+            lastMonthOverspent: -200,
+            budgeted: 800,
+            toBudget: 100,
+            manualBuffered: 0
+        )
+
+        #expect(summary.availableFunds == 1_500)
+        #expect(summary.lastMonthOverspent == -200)
+        #expect(summary.budgeted == 800)
+        #expect(summary.toBudget == 100)
+        #expect(summary.forNextMonth == 400)
+        #expect(summary.manualBuffered == 0)
+        #expect(summary.autoBuffered == 400)
+    }
+
+    @Test("Manual buffer suppresses the inferred auto-buffer amount")
+    func manualBufferTakesPriority() {
+        let summary = BudgetStore.makeEnvelopeBudgetSummary(
+            availableFunds: 1_500,
+            lastMonthOverspent: 0,
+            budgeted: 500,
+            toBudget: 500,
+            manualBuffered: 250
+        )
+
+        #expect(summary.forNextMonth == 500)
+        #expect(summary.manualBuffered == 250)
+        #expect(summary.autoBuffered == 0)
+    }
+
+    @Test("Negative For next month never creates an auto-buffer")
+    func negativeNextMonthDoesNotAutoBuffer() {
+        let summary = BudgetStore.makeEnvelopeBudgetSummary(
+            availableFunds: 100,
+            lastMonthOverspent: -200,
+            budgeted: 300,
+            toBudget: 0,
+            manualBuffered: 0
+        )
+
+        #expect(summary.forNextMonth == -400)
+        #expect(summary.autoBuffered == 0)
+    }
+
+    @Test("Zero To Budget can still carry a manual buffer and suppresses auto-buffering")
+    func zeroToBudgetWithManualBuffer() {
+        let summary = BudgetStore.makeEnvelopeBudgetSummary(
+            availableFunds: 500,
+            lastMonthOverspent: 0,
+            budgeted: 500,
+            toBudget: 0,
+            manualBuffered: 100
+        )
+
+        #expect(summary.toBudget == 0)
+        #expect(summary.forNextMonth == 0)
+        #expect(summary.manualBuffered == 100)
+        #expect(summary.autoBuffered == 0)
+    }
 }
