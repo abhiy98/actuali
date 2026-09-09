@@ -8,6 +8,7 @@ struct BudgetStoreEnvelopeBudgetSummaryTests {
         #expect(!BudgetStore.isValidBudgetMonth("2026-9"))
         #expect(!BudgetStore.isValidBudgetMonth("09-2026"))
         #expect(!BudgetStore.isValidBudgetMonth("2026-13"))
+        #expect(!BudgetStore.isValidBudgetMonth("2026/09"))
     }
 
     @Test("Empty month is a safe summary baseline")
@@ -108,5 +109,158 @@ struct BudgetStoreEnvelopeBudgetSummaryTests {
         #expect(summary.forNextMonth == 0)
         #expect(summary.manualBuffered == 100)
         #expect(summary.autoBuffered == 0)
+    }
+
+    @Test("No manual or automatic buffer exposes move and hold for positive To Budget")
+    func positiveToBudgetActions() {
+        let summary = BudgetStore.makeEnvelopeBudgetSummary(
+            availableFunds: 1_000,
+            lastMonthOverspent: 0,
+            budgeted: 500,
+            toBudget: 500,
+            manualBuffered: 0
+        )
+
+        #expect(
+            EnvelopeBudgetSummaryAction.available(for: summary)
+                == [.moveToCategory, .holdForNextMonth]
+        )
+    }
+
+    @Test("Automatic buffer hides manual Hold")
+    func automaticBufferHidesHoldAction() {
+        let summary = BudgetStore.makeEnvelopeBudgetSummary(
+            availableFunds: 1_500,
+            lastMonthOverspent: 0,
+            budgeted: 500,
+            toBudget: 500,
+            manualBuffered: 0
+        )
+        let autoBuffered = EnvelopeBudgetSummary(
+            availableFunds: summary.availableFunds,
+            lastMonthOverspent: summary.lastMonthOverspent,
+            budgeted: summary.budgeted,
+            forNextMonth: summary.forNextMonth,
+            toBudget: summary.toBudget,
+            manualBuffered: 0,
+            autoBuffered: 500
+        )
+
+        #expect(EnvelopeBudgetSummaryAction.available(for: autoBuffered) == [.moveToCategory])
+    }
+
+    @Test("Manual buffer exposes Reset even when To Budget is zero")
+    func manualBufferWithZeroToBudgetShowsReset() {
+        let summary = EnvelopeBudgetSummary(
+            availableFunds: 500,
+            lastMonthOverspent: 0,
+            budgeted: 500,
+            forNextMonth: 0,
+            toBudget: 0,
+            manualBuffered: 100,
+            autoBuffered: 0
+        )
+
+        #expect(EnvelopeBudgetSummaryAction.available(for: summary) == [.resetBuffer])
+    }
+
+    @Test("Manual buffer exposes Reset and Cover when To Budget is negative")
+    func manualBufferWithNegativeToBudgetShowsResetAndCover() {
+        let summary = EnvelopeBudgetSummary(
+            availableFunds: 100,
+            lastMonthOverspent: -200,
+            budgeted: 300,
+            forNextMonth: -400,
+            toBudget: -100,
+            manualBuffered: 50,
+            autoBuffered: 0
+        )
+
+        #expect(
+            EnvelopeBudgetSummaryAction.available(for: summary)
+                == [.resetBuffer, .coverFromCategory]
+        )
+    }
+
+    @Test("Positive To Budget with a manual buffer exposes Reset and Move but not Hold")
+    func positiveToBudgetWithManualBuffer() {
+        let summary = EnvelopeBudgetSummary(
+            availableFunds: 1_500,
+            lastMonthOverspent: 0,
+            budgeted: 500,
+            forNextMonth: 500,
+            toBudget: 500,
+            manualBuffered: 250,
+            autoBuffered: 0
+        )
+
+        #expect(
+            EnvelopeBudgetSummaryAction.available(for: summary)
+                == [.resetBuffer, .moveToCategory]
+        )
+    }
+
+    @Test("Last-month overspending ignores carryover-protected categories")
+    func lastMonthOverspendingHonorsCarryoverFlag() {
+        let categories = [
+            CategoryBudget(
+                month: "2026-08",
+                categoryId: "normal",
+                categoryName: "Normal",
+                groupId: "group",
+                groupName: "Group",
+                groupSortOrder: 0,
+                categorySortOrder: 0,
+                budgeted: 500,
+                spent: -650,
+                available: -150,
+                carryover: 0,
+                goal: nil,
+                longGoal: false,
+                carryoverEnabled: false
+            ),
+            CategoryBudget(
+                month: "2026-08",
+                categoryId: "protected",
+                categoryName: "Protected",
+                groupId: "group",
+                groupName: "Group",
+                groupSortOrder: 0,
+                categorySortOrder: 1,
+                budgeted: 500,
+                spent: -700,
+                available: -200,
+                carryover: 0,
+                goal: nil,
+                longGoal: false,
+                carryoverEnabled: true
+            )
+        ]
+
+        #expect(BudgetStore.lastMonthOverspent(categories) == -150)
+    }
+
+    @Test("Last-month overspending includes hidden categories")
+    func lastMonthOverspendingIncludesHiddenCategories() {
+        let hidden = CategoryBudget(
+            month: "2026-08",
+            categoryId: "hidden",
+            categoryName: "Hidden",
+            groupId: "group",
+            groupName: "Group",
+            groupSortOrder: 0,
+            categorySortOrder: 0,
+            budgeted: 500,
+            spent: -700,
+            available: -200,
+            carryover: 0,
+            hidden: true,
+            groupHidden: true,
+            goal: nil,
+            longGoal: false,
+            carryoverEnabled: false
+        )
+
+        #expect(BudgetStore.lastMonthOverspent([hidden]) == -200)
     }
 }
