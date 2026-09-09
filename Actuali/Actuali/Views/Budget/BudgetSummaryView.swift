@@ -1,5 +1,34 @@
 import SwiftUI
 
+/// Actions available from the envelope budget summary result menu.
+enum EnvelopeBudgetSummaryAction: Equatable {
+    case resetBuffer
+    case moveToCategory
+    case holdForNextMonth
+    case coverFromCategory
+}
+
+extension EnvelopeBudgetSummaryAction {
+    nonisolated static func available(for summary: EnvelopeBudgetSummary) -> [Self] {
+        var actions: [Self] = []
+
+        if summary.manualBuffered > 0 {
+            actions.append(.resetBuffer)
+        }
+
+        if summary.toBudget > 0 {
+            actions.append(.moveToCategory)
+            if summary.manualBuffered == 0 && summary.autoBuffered == 0 {
+                actions.append(.holdForNextMonth)
+            }
+        } else if summary.toBudget < 0 {
+            actions.append(.coverFromCategory)
+        }
+
+        return actions
+    }
+}
+
 /// Interactive To Budget / Overbudgeted cell used by compact budget summaries.
 struct BudgetBufferCompactSummaryStat: View {
     @EnvironmentObject private var budgetStore: BudgetStore
@@ -118,24 +147,24 @@ struct BudgetSummarySheet: View {
             titleVisibility: .visible
         ) {
             if let summary {
-                if summary.manualBuffered > 0 {
-                    Button(String(localized: "Reset next month's buffer")) {
-                        resetBuffer()
-                    }
-                }
-
-                if summary.toBudget > 0 {
-                    Button(String(localized: "Move to a category")) {
-                        showingCategorySheet = true
-                    }
-                    if summary.manualBuffered == 0 && summary.autoBuffered == 0 {
+                ForEach(Array(EnvelopeBudgetSummaryAction.available(for: summary).enumerated()), id: \.offset) { _, action in
+                    switch action {
+                    case .resetBuffer:
+                        Button(String(localized: "Reset next month's buffer")) {
+                            resetBuffer()
+                        }
+                    case .moveToCategory:
+                        Button(String(localized: "Move to a category")) {
+                            showingCategorySheet = true
+                        }
+                    case .holdForNextMonth:
                         Button(String(localized: "Hold for next month")) {
                             showingHoldSheet = true
                         }
-                    }
-                } else if summary.toBudget < 0 {
-                    Button(String(localized: "Cover from a category")) {
-                        showingCategorySheet = true
+                    case .coverFromCategory:
+                        Button(String(localized: "Cover from a category")) {
+                            showingCategorySheet = true
+                        }
                     }
                 }
 
