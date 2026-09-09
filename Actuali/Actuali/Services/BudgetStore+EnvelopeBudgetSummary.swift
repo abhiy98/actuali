@@ -39,9 +39,7 @@ extension BudgetStore {
             let previousMonth = Self.shiftBudgetMonth(currentMonth, by: -1)
             let previous = previousMonth.flatMap { snapshots[$0] }
 
-            let lastMonthOverspent = previous?.allCategoryBudgets.reduce(0) { total, category in
-                category.carryoverEnabled ? total : total + min(0, category.available)
-            } ?? 0
+            let lastMonthOverspent = previous.map { Self.lastMonthOverspent($0.allCategoryBudgets) } ?? 0
             let budgeted = current.allCategoryBudgets.reduce(0) { $0 + $1.budgeted }
             let income = current.allIncomeCategories.reduce(0) { $0 + $1.received }
             let availableFunds = income + previousToBudget + previousForNextMonth
@@ -62,6 +60,12 @@ extension BudgetStore {
         }
 
         return nil
+    }
+
+    nonisolated static func lastMonthOverspent(_ categories: [CategoryBudget]) -> Int {
+        categories.reduce(0) { total, category in
+            category.carryoverEnabled ? total : total + min(0, category.available)
+        }
     }
 
     nonisolated static func makeEnvelopeBudgetSummary(
