@@ -15,13 +15,13 @@ extension BudgetStore {
     /// ponytail: keep this bounded at 120 months; replacing it with a single budget walk is the next
     /// optimization if summary taps become measurable on long-lived budgets.
     func fetchEnvelopeBudgetSummary(_ month: String) async -> EnvelopeBudgetSummary? {
-        guard let database = databaseForLogger, Self.isValidBudgetMonth(month) else { return nil }
+        guard Self.isValidBudgetMonth(month) else { return nil }
 
         var snapshots: [String: BudgetMonth] = [:]
         var cursor = month
 
         for _ in 0..<120 {
-            guard let snapshot = try? await database.fetchBudgetMonth(month: cursor) else { return nil }
+            guard let snapshot = await fetchBudgetMonthSnapshot(cursor) else { return nil }
             snapshots[cursor] = snapshot
             if Self.isSummaryBaseline(snapshot) { break }
             guard let previous = Self.shiftBudgetMonth(cursor, by: -1) else { break }
