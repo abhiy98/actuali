@@ -80,11 +80,12 @@ struct BudgetSummarySheet: View {
         guard let previousMonth = BudgetStore.shiftBudgetMonth(month, by: -1),
               let monthNumber = Int(previousMonth.split(separator: "-").last ?? "0"),
               (1...12).contains(monthNumber) else {
-            return String(localized: "Overspent")
+            return String(localized: "Overspent", locale: locale)
         }
         let formatter = DateFormatter()
         formatter.locale = locale
-        return String(localized: "Overspent in") + " " + formatter.shortMonthSymbols[monthNumber - 1]
+        let monthName = formatter.shortMonthSymbols[monthNumber - 1]
+        return String(format: String(localized: "Overspent in %@", locale: locale), monthName)
     }
 
     var body: some View {
