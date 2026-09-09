@@ -11,8 +11,6 @@ struct EnvelopeBudgetSummary: Equatable, Sendable {
 }
 
 extension BudgetStore {
-    /// Reconstructs summary values from canonical BudgetMonth snapshots.
-    /// The view layer is presentation-only and does not duplicate budget math.
     func fetchEnvelopeBudgetSummary(_ month: String) async -> EnvelopeBudgetSummary? {
         guard let database = databaseForLogger, Self.isValidBudgetMonth(month) else { return nil }
 
