@@ -170,6 +170,10 @@ struct BudgetSummarySheet: View {
         ZStack {
             Color.black.opacity(0.22)
                 .ignoresSafeArea()
+                .contentShape(Rectangle())
+                .onTapGesture {
+                    dismiss()
+                }
 
             glassCard
                 .padding(.horizontal, 24)
