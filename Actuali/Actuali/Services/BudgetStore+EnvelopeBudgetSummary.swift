@@ -45,27 +45,44 @@ extension BudgetStore {
             let budgeted = current.allCategoryBudgets.reduce(0) { $0 + $1.budgeted }
             let income = current.allIncomeCategories.reduce(0) { $0 + $1.received }
             let availableFunds = income + previousToBudget + previousForNextMonth
-            let forNextMonth = availableFunds + lastMonthOverspent - budgeted - toBudget
-            let manualBuffered = current.buffered
-            let autoBuffered = manualBuffered == 0 ? max(forNextMonth, 0) : 0
+            let summary = Self.makeEnvelopeBudgetSummary(
+                availableFunds: availableFunds,
+                lastMonthOverspent: lastMonthOverspent,
+                budgeted: budgeted,
+                toBudget: toBudget,
+                manualBuffered: current.buffered
+            )
 
             if currentMonth == month {
-                return EnvelopeBudgetSummary(
-                    availableFunds: availableFunds,
-                    lastMonthOverspent: lastMonthOverspent,
-                    budgeted: budgeted,
-                    forNextMonth: forNextMonth,
-                    toBudget: toBudget,
-                    manualBuffered: manualBuffered,
-                    autoBuffered: autoBuffered
-                )
+                return summary
             }
 
             previousToBudget = toBudget
-            previousForNextMonth = forNextMonth
+            previousForNextMonth = summary.forNextMonth
         }
 
         return nil
+    }
+
+    nonisolated static func makeEnvelopeBudgetSummary(
+        availableFunds: Int,
+        lastMonthOverspent: Int,
+        budgeted: Int,
+        toBudget: Int,
+        manualBuffered: Int
+    ) -> EnvelopeBudgetSummary {
+        let forNextMonth = availableFunds + lastMonthOverspent - budgeted - toBudget
+        let autoBuffered = manualBuffered == 0 ? max(forNextMonth, 0) : 0
+
+        return EnvelopeBudgetSummary(
+            availableFunds: availableFunds,
+            lastMonthOverspent: lastMonthOverspent,
+            budgeted: budgeted,
+            forNextMonth: forNextMonth,
+            toBudget: toBudget,
+            manualBuffered: manualBuffered,
+            autoBuffered: autoBuffered
+        )
     }
 
     nonisolated static func isValidBudgetMonth(_ month: String) -> Bool {
