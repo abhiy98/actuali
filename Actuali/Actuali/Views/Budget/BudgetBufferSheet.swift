@@ -30,9 +30,9 @@ struct BudgetBufferSheet: View {
                         autofocus: true
                     )
                 } header: {
-                    Text("Hold this amount")
+                    Text(String(localized: "Hold this amount"))
                 } footer: {
-                    Text("This amount will be removed from this month's To Budget and available to budget next month.")
+                    Text(String(localized: "This amount will be removed from this month's To Budget and available to budget next month."))
                 }
 
                 if let errorMessage {
@@ -42,14 +42,14 @@ struct BudgetBufferSheet: View {
                     }
                 }
             }
-            .navigationTitle("Hold for next month")
+            .navigationTitle(String(localized: "Hold for next month"))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") { dismiss() }
+                    Button(String(localized: "Cancel")) { dismiss() }
                 }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("Hold") { save() }
+                    Button(String(localized: "Hold")) { save() }
                         .disabled(isSaving)
                 }
             }
