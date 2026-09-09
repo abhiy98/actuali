@@ -252,10 +252,13 @@ struct BudgetSummarySheet: View {
         }
 
         let previousMonth = BudgetStore.shiftBudgetMonth(month, by: -1)
-        let previous = previousMonth.flatMap { previousMonth in
+        let previous: BudgetMonth?
+        if let previousMonth {
             // This call is safe because fetchBudgetMonthSnapshot is explicitly
             // non-mutating: it never changes the month currently shown on screen.
-            return await budgetStore.fetchBudgetMonthSnapshot(previousMonth)
+            previous = await budgetStore.fetchBudgetMonthSnapshot(previousMonth)
+        } else {
+            previous = nil
         }
 
         let lastMonthOverspent = previous?.categoryBudgets.reduce(0) { total, category in
