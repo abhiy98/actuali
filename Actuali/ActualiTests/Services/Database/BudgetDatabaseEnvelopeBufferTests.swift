@@ -29,15 +29,13 @@ struct BudgetDatabaseEnvelopeBufferTests {
         return (try BudgetDatabase(path: url), url)
     }
 
-    private func messages(
-        amount: Int,
-        millis: Int64
-    ) async throws -> [CRDTMessage] {
-        let generator = MessageGenerator(clock: HybridLogicalClock(node: "buffer-test-node"))
-        return try await generator.messages(
+    private func message(amount: Int, millis: Int64) -> CRDTMessage {
+        CRDTMessage(
+            timestamp: HLCTimestamp(millis: millis, counter: 0, node: "buffer-test-node"),
             dataset: "zero_budget_months",
             row: "2026-09",
-            fields: [("buffered", amount)]
+            column: "buffered",
+            value: CRDTValue.serialize(amount)
         )
     }
 
@@ -53,47 +51,73 @@ struct BudgetDatabaseEnvelopeBufferTests {
     }
 
     @Test("Buffer CRDT message creates a missing zero-budget row")
-    func createsMissingRow() async throws {
+    func createsMissingRow() throws {
         let (database, path) = try makeDatabase()
-        try database.applyMessages(try await messages(amount: 500, millis: 1_700_000_000_000))
+        try database.applyMessages([
+            message(amount: 500, millis: 1_700_000_000_000)
+        ])
 
         #expect(try bufferedValue(path: path) == 500)
-        #expect(try await database.messageTimestamps(
+        #expect(try database.messageTimestamps(
             dataset: "zero_budget_months",
             row: "2026-09"
         ).count == 1)
     }
 
     @Test("Buffer CRDT message updates an existing zero-budget row")
-    func updatesExistingRow() async throws {
+    func updatesExistingRow() throws {
         let (database, path) = try makeDatabase()
-        try database.applyMessages(try await messages(amount: 500, millis: 1_700_000_000_000))
-        try database.applyMessages(try await messages(amount: 250, millis: 1_700_000_000_001))
+        try database.applyMessages([
+            message(amount: 500, millis: 1_700_000_000_000)
+        ])
+        try database.applyMessages([
+            message(amount: 250, millis: 1_700_000_000_001)
+        ])
 
         #expect(try bufferedValue(path: path) == 250)
     }
 
     @Test("Reset buffer writes zero to the synced row")
-    func resetsExistingRow() async throws {
+    func resetsExistingRow() throws {
         let (database, path) = try makeDatabase()
-        try database.applyMessages(try await messages(amount: 500, millis: 1_700_000_000_000))
-        try database.applyMessages(try await messages(amount: 0, millis: 1_700_000_000_001))
+        try database.applyMessages([
+            message(amount: 500, millis: 1_700_000_000_000)
+        ])
+        try database.applyMessages([
+            message(amount: 0, millis: 1_700_000_000_001)
+        ])
 
         #expect(try bufferedValue(path: path) == 0)
     }
 
     @Test("Latest buffer CRDT message wins regardless of application order")
-    func latestMessageWinsOutOfOrder() async throws {
-        let earlier = try await messages(amount: 500, millis: 1_700_000_000_000)
-        let later = try await messages(amount: 250, millis: 1_700_000_000_001)
+    func latestMessageWinsOutOfOrder() throws {
+        let earlier = message(amount: 500, millis: 1_700_000_000_000)
+        let later = message(amount: 250, millis: 1_700_000_000_001)
 
         let (orderedDatabase, orderedPath) = try makeDatabase()
-        try orderedDatabase.applyMessages(earlier + later)
+        try orderedDatabase.applyMessages([earlier, later])
 
         let (reversedDatabase, reversedPath) = try makeDatabase()
-        try reversedDatabase.applyMessages(later + earlier)
+        try reversedDatabase.applyMessages([later, earlier])
 
         #expect(try bufferedValue(path: orderedPath) == 250)
         #expect(try bufferedValue(path: reversedPath) == 250)
+    }
+
+    @Test("Message generator produces an Actual-compatible buffer message")
+    func messageGeneratorProducesBufferMessage() async throws {
+        let generator = MessageGenerator(clock: HybridLogicalClock(node: "buffer-test-node"))
+        let messages = try await generator.messages(
+            dataset: "zero_budget_months",
+            row: "2026-09",
+            fields: [("buffered", 500)]
+        )
+
+        #expect(messages.count == 1)
+        #expect(messages[0].dataset == "zero_budget_months")
+        #expect(messages[0].row == "2026-09")
+        #expect(messages[0].column == "buffered")
+        #expect(CRDTValue.deserialize(messages[0].value) as? Int == 500)
     }
 }
