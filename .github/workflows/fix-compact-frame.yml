@@ -1,0 +1,31 @@
+name: Fix CompactBudgetRenderer frame
+on:
+  push:
+    branches: [Hold-To-Budget-for-next-month-and-reset-the-buffer]
+permissions:
+  contents: write
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Fix conditional view frame
+        run: |
+          python3 <<'PY'
+          from pathlib import Path
+          import subprocess
+          path = Path('Actuali/Actuali/Views/Budget/CompactBudgetRenderer.swift')
+          text = path.read_text()
+          old = '''                    if overview.leading.kind == .toBudget {\n                        BudgetBufferCompactSummaryStat(\n                            stat: overview.leading,\n                            alignment: .leading\n                        )\n                    } else {\n                        CompactOverviewStat(\n                            stat: overview.leading,\n                            isResult: false,\n                            alignment: .leading\n                        )\n                    }\n                        .frame(\n                            width: CompactBudgetTableLayout.titleColumnWidth,\n                            alignment: .leading\n                        )'''
+          new = '''                    Group {\n                        if overview.leading.kind == .toBudget {\n                            BudgetBufferCompactSummaryStat(\n                                stat: overview.leading,\n                                alignment: .leading\n                            )\n                        } else {\n                            CompactOverviewStat(\n                                stat: overview.leading,\n                                isResult: false,\n                                alignment: .leading\n                            )\n                        }\n                    }\n                    .frame(\n                        width: CompactBudgetTableLayout.titleColumnWidth,\n                        alignment: .leading\n                    )'''
+          if old not in text:
+              raise SystemExit('Expected CompactBudgetRenderer anchor not found')
+          path.write_text(text.replace(old, new, 1))
+          workflow = Path('.github/workflows/fix-compact-frame.yml')
+          workflow.unlink()
+          subprocess.run(['git','config','user.name','github-actions[bot]'], check=True)
+          subprocess.run(['git','config','user.email','41898282+github-actions[bot]@users.noreply.github.com'], check=True)
+          subprocess.run(['git','add','.'], check=True)
+          subprocess.run(['git','commit','-m','Fix CompactBudgetRenderer conditional frame'], check=True)
+          subprocess.run(['git','push'], check=True)
+          PY
