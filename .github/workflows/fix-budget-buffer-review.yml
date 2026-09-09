@@ -10,7 +10,7 @@ permissions:
 
 jobs:
   fix:
-    if: contains(github.event.head_commit.message, '[apply-buffer-review-fixes]')
+    if: true
     runs-on: macos-15
     steps:
       - uses: actions/checkout@v4
@@ -23,7 +23,6 @@ jobs:
           set -euo pipefail
           python3 <<'PY'
           from pathlib import Path
-          import re
 
           root = Path('.')
 
@@ -36,7 +35,7 @@ jobs:
           summary, category = remainder.split(category_marker, 1)
           source_path.write_text(head.rstrip() + '\n')
           (root / 'Actuali/Actuali/Views/Budget/BudgetSummaryView.swift').write_text(
-              'import SwiftUI\n' + compact_marker + summary.split('{@', 1)[0] if False else 'import SwiftUI\n' + compact_marker + summary + '\n'
+              'import SwiftUI\n' + compact_marker + summary + '\n'
           )
           (root / 'Actuali/Actuali/Views/Budget/BudgetToCategorySheet.swift').write_text(
               'import SwiftUI\n' + category_marker + category.lstrip('\n')
@@ -121,11 +120,6 @@ jobs:
           if old_return not in db:
               raise SystemExit('Budget walk return marker not found')
           db = db.replace(old_return, new_return, 1)
-          db_path.write_text(db)
-
-          # Add a database-level summary value object and accessor.
-          db_path.write_text(db_path.read_text() if False else db_path.read_text())
-          db = db_path.read_text()
           insert_before = '''    func fetchBudgetMonth(month: String) async throws -> BudgetMonth {'''
           summary_struct = '''    struct EnvelopeBudgetSummary: Sendable, Equatable {
         let availableFunds: Int
@@ -161,7 +155,7 @@ jobs:
           db = db.replace(insert_before, summary_struct + insert_before, 1)
           db_path.write_text(db)
 
-          # Make BudgetStore writes read the requested month instead of trusting mutable UI state.
+          # Make BudgetStore writes read the requested month instead of mutable UI state.
           store_path = root / 'Actuali/Actuali/Services/BudgetStore.swift'
           store = store_path.read_text()
           old_hold = '''    func holdBudgetForNextMonth(month: String, amountCents: Int) async throws {
@@ -186,8 +180,8 @@ jobs:
 
     /// Hold part or all of this envelope month's To Budget for next month.
     func holdBudgetForNextMonth(month: String, amountCents: Int) async throws {
-        guard let budget = try? await database?.fetchBudgetMonth(month: month),
-              let budget,
+        guard let database,
+              let budget = try? await database.fetchBudgetMonth(month: month),
               let toBudget = budget.toBudget,
               amountCents > 0 else {
             throw BudgetStoreError.invalidAmount
@@ -200,27 +194,24 @@ jobs:
     }
 
     func resetBudgetBuffer(month: String) async throws {
-        guard let budget = try? await database?.fetchBudgetMonth(month: month), budget.month == month else {
+        guard let database,
+              let budget = try? await database.fetchBudgetMonth(month: month),
+              budget.month == month else {
             throw BudgetStoreError.invalidAmount
         }
         guard let syncClient else { throw BudgetStoreError.syncNotConfigured }
         try await syncClient.setBudgetBuffer(month: month, amount: 0)
         await fetchBudgetMonth(month)
     }'''
-          # Remove optional-binding ambiguity in the generated hold guard.
-          new_hold = new_hold.replace('guard let budget = try? await database?.fetchBudgetMonth(month: month),\n              let budget,', 'guard let database,\n              let budget = try? await database.fetchBudgetMonth(month: month),')
           if old_hold not in store:
               raise SystemExit('BudgetStore hold/reset block not found')
-          store = store.replace(old_hold, new_hold, 1)
-          store_path.write_text(store)
+          store_path.write_text(store.replace(old_hold, new_hold, 1))
 
-          # Replace the summary view implementation with canonical database values, locale-aware labels,
-          # proper amount input, and visible reset errors.
+          # Canonical summary values and action rules.
           summary_path = root / 'Actuali/Actuali/Views/Budget/BudgetSummaryView.swift'
           summary = summary_path.read_text()
           summary = summary.replace('    @State private var showingHoldSheet = false\n', '    @State private var showingHoldSheet = false\n    @State private var resetErrorMessage: String?\n', 1)
           summary = summary.replace('        .confirmationDialog(\n', '        .alert(String(localized: "Unable to reset buffer"), isPresented: Binding(\n            get: { resetErrorMessage != nil },\n            set: { if !$0 { resetErrorMessage = nil } }\n        )) {\n            Button(String(localized: "OK"), role: .cancel) { resetErrorMessage = nil }\n        } message: {\n            Text(resetErrorMessage ?? String(localized: "The buffer could not be reset."))\n        }\n        .confirmationDialog(\n', 1)
-
           old_actions = '''            if let summary {
                 if summary.toBudget > 0 {
                     Button("Move to a category") { showingCategorySheet = true }
@@ -272,16 +263,18 @@ jobs:
           if old_actions not in summary:
               raise SystemExit('summary actions block not found')
           summary = summary.replace(old_actions, new_actions, 1)
-
-          start = summary.index('    private func loadSummary() async {')
+          old_load_start = '    private func loadSummary() async {'
+          start = summary.index(old_load_start)
           end = summary.index('\n}\n\nprivate struct BudgetSummaryGlassModifier', start)
-          canonical_load = '''    private func loadSummary() async {
+          summary = summary[:start] + '''    private func loadSummary() async {
         summary = await budgetStore.fetchEnvelopeBudgetSummary(month)
     }
-'''
-          summary = summary[:start] + canonical_load + summary[end:]
+''' + summary[end:]
+          summary_path.write_text(summary)
 
-          # Use the same amount input used by the existing transfer editor.
+          # Use the shared locale-aware amount entry already used by the category transfer flow.
+          hold_path = root / 'Actuali/Actuali/Views/Budget/BudgetBufferSheet.swift'
+          hold = hold_path.read_text()
           old_amount = '''                    TextField("Amount", text: $amountText)
                         .keyboardType(.decimalPad)'''
           new_amount = '''                    AmountInputField(
@@ -290,38 +283,14 @@ jobs:
                         allowsNegative: false,
                         autofocus: true
                     )'''
-          # This replacement belongs in the Hold editor only; summary file no longer contains it.
-          summary_path.write_text(summary)
-          hold_path = root / 'Actuali/Actuali/Views/Budget/BudgetBufferSheet.swift'
-          hold = hold_path.read_text()
           if old_amount not in hold:
               raise SystemExit('Hold amount input marker not found')
           hold = hold.replace(old_amount, new_amount, 1)
-          hold = hold.replace('Text("Hold this amount")', 'Text(String(localized: "Hold this amount"))')
-          hold = hold.replace('Text("This amount will be removed from this month\'s To Budget and available to budget next month.")', 'Text(String(localized: "This amount will be removed from this month\'s To Budget and available to budget next month."))')
           hold_path.write_text(hold)
 
-          # Localize the compact label already present and make the summary result title localized.
-          summary = summary_path.read_text()
-          summary = summary.replace('        (summary?.toBudget ?? 0) < 0 ? "Overbudgeted" : "To Budget"', '        (summary?.toBudget ?? 0) < 0\n            ? String(localized: "Overbudgeted", locale: locale)\n            : String(localized: "To Budget", locale: locale)', 1)
-          summary = summary.replace('        return "Overspent in \\(formatter.shortMonthSymbols[monthNumber - 1])"', '        return String(localized: "Overspent in") + " \\(formatter.shortMonthSymbols[monthNumber - 1])"', 1)
-          for literal in ['Budget Summary', 'Available Funds', 'Budgeted', 'For next month']:
-              summary = summary.replace(f'summaryRow("{literal}"', f'summaryRow(String(localized: "{literal}")', 1)
-          # Previous month title is dynamic and cannot be a static LocalizedStringKey.
-          summary = summary.replace('summaryRow(\n                        previousMonthTitle,', 'summaryRow(\n                        previousMonthTitle,', 1)
-          summary_path.write_text(summary)
-
-          category_path = root / 'Actuali/Actuali/Views/Budget/BudgetToCategorySheet.swift'
-          category = category_path.read_text()
-          # Static strings passed through Text remain LocalizedStringKey; dynamic section/title expressions are made explicit.
-          category = category.replace('.navigationTitle(isCovering ? "Cover Overbudgeted" : "Move to Category")', '.navigationTitle(isCovering ? String(localized: "Cover Overbudgeted") : String(localized: "Move to Category"))')
-          category = category.replace('Button(isCovering ? "Cover" : "Move") { save() }', 'Button(isCovering ? String(localized: "Cover") : String(localized: "Move")) { save() }')
-          category_path.write_text(category)
-
-          # Add feature-focused database tests.
+          # Feature-focused budget-walk regression tests.
           test_path = root / 'Actuali/ActualiTests/Services/Database/BudgetDatabaseBufferSummaryTests.swift'
-          test_path.write_text('''import Foundation
-import Testing
+          test_path.write_text('''import Testing
 import GRDB
 @testable import Actuali
 
@@ -364,7 +333,6 @@ struct BudgetDatabaseBufferSummaryTests {
                 CREATE TABLE accounts (
                     id TEXT PRIMARY KEY,
                     name TEXT,
-                    type TEXT,
                     offbudget INTEGER,
                     tombstone INTEGER
                 );
@@ -418,7 +386,6 @@ struct BudgetDatabaseBufferSummaryTests {
                 VALUES ('income', 'acct', 'cat-inc', 30000, 20260901, 0);
             """)
         }
-
         let result = try db.read { conn in
             try BudgetDatabase.budgetWalk(conn, targetMonthInt: 202609)
         }
@@ -441,7 +408,6 @@ struct BudgetDatabaseBufferSummaryTests {
                 INSERT INTO zero_budget_months (id, buffered) VALUES ('202609', 10000);
             """)
         }
-
         let result = try db.read { conn in
             try BudgetDatabase.budgetWalk(conn, targetMonthInt: 202609)
         }
@@ -462,7 +428,6 @@ struct BudgetDatabaseBufferSummaryTests {
                 VALUES ('income', 'acct', 'cat-inc', 100000, 20260901, 0);
             """)
         }
-
         let result = try db.read { conn in
             try BudgetDatabase.budgetWalk(conn, targetMonthInt: 202609)
         }
@@ -478,13 +443,12 @@ struct BudgetDatabaseBufferSummaryTests {
 }
 ''')
 
-          # Remove this one-shot workflow after completing the patch so it does not remain in the product branch.
-          workflow = root / '.github/workflows/fix-budget-buffer-review.yml'
-          workflow.unlink()
+          # Remove the one-shot workflow so it cannot be triggered again.
+          (root / '.github/workflows/fix-budget-buffer-review.yml').unlink()
           PY
 
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add Actuali .github/workflows/fix-budget-buffer-review.yml
-          git commit -m "Apply budget buffer review fixes"
+          git commit -m "Apply exhaustive budget buffer review fixes"
           git push
