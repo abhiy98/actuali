@@ -52,9 +52,13 @@ struct BudgetToCategorySheet: View {
                             selection: $selectedCategoryId
                         ) {
                             ForEach(candidates, id: \.categoryId) { category in
-                                Text(
-                                    "\(category.categoryName) (\(budgetStore.displayBalance(category.available)))"
-                                )
+                                HStack {
+                                    Text(category.categoryName)
+                                    Spacer()
+                                    Text(budgetStore.displayBalance(category.available))
+                                        .foregroundStyle(.secondary)
+                                        .monospacedDigit()
+                                }
                                 .tag(category.categoryId)
                             }
                         }
