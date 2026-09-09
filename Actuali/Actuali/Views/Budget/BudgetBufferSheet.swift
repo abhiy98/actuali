@@ -133,8 +133,8 @@ struct BudgetBufferCompactSummaryStat: View {
 /// Budget summary presented as a centered Liquid Glass card for an envelope budget.
 struct BudgetSummarySheet: View {
     @EnvironmentObject private var budgetStore: BudgetStore
-    @Environment(\\.dismiss) private var dismiss
-    @Environment(\\.locale) private var locale
+    @Environment(\.dismiss) private var dismiss
+    @Environment(\.locale) private var locale
     @State private var summary: BudgetSummaryValues?
     @State private var showingActions = false
     @State private var showingCategorySheet = false
