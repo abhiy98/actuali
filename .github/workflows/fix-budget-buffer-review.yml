@@ -11,7 +11,7 @@ permissions:
 jobs:
   fix:
     if: true
-    runs-on: macos-15
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
@@ -26,7 +26,6 @@ jobs:
 
           root = Path('.')
 
-          # Split the previously monolithic budget buffer file into focused views.
           source_path = root / 'Actuali/Actuali/Views/Budget/BudgetBufferSheet.swift'
           source = source_path.read_text()
           compact_marker = '\n/// Compact budget summary\'s interactive To Budget / Overbudgeted cell.'
@@ -41,7 +40,6 @@ jobs:
               'import SwiftUI\n' + category_marker + category.lstrip('\n')
           )
 
-          # Consolidate summary math in BudgetDatabase's existing budget walk.
           db_path = root / 'Actuali/Actuali/Services/Database/BudgetDatabase.swift'
           db = db_path.read_text()
 
@@ -120,6 +118,7 @@ jobs:
           if old_return not in db:
               raise SystemExit('Budget walk return marker not found')
           db = db.replace(old_return, new_return, 1)
+
           insert_before = '''    func fetchBudgetMonth(month: String) async throws -> BudgetMonth {'''
           summary_struct = '''    struct EnvelopeBudgetSummary: Sendable, Equatable {
         let availableFunds: Int
@@ -155,7 +154,6 @@ jobs:
           db = db.replace(insert_before, summary_struct + insert_before, 1)
           db_path.write_text(db)
 
-          # Make BudgetStore writes read the requested month instead of mutable UI state.
           store_path = root / 'Actuali/Actuali/Services/BudgetStore.swift'
           store = store_path.read_text()
           old_hold = '''    func holdBudgetForNextMonth(month: String, amountCents: Int) async throws {
@@ -207,7 +205,6 @@ jobs:
               raise SystemExit('BudgetStore hold/reset block not found')
           store_path.write_text(store.replace(old_hold, new_hold, 1))
 
-          # Canonical summary values and action rules.
           summary_path = root / 'Actuali/Actuali/Views/Budget/BudgetSummaryView.swift'
           summary = summary_path.read_text()
           summary = summary.replace('    @State private var showingHoldSheet = false\n', '    @State private var showingHoldSheet = false\n    @State private var resetErrorMessage: String?\n', 1)
@@ -263,8 +260,7 @@ jobs:
           if old_actions not in summary:
               raise SystemExit('summary actions block not found')
           summary = summary.replace(old_actions, new_actions, 1)
-          old_load_start = '    private func loadSummary() async {'
-          start = summary.index(old_load_start)
+          start = summary.index('    private func loadSummary() async {')
           end = summary.index('\n}\n\nprivate struct BudgetSummaryGlassModifier', start)
           summary = summary[:start] + '''    private func loadSummary() async {
         summary = await budgetStore.fetchEnvelopeBudgetSummary(month)
@@ -272,7 +268,6 @@ jobs:
 ''' + summary[end:]
           summary_path.write_text(summary)
 
-          # Use the shared locale-aware amount entry already used by the category transfer flow.
           hold_path = root / 'Actuali/Actuali/Views/Budget/BudgetBufferSheet.swift'
           hold = hold_path.read_text()
           old_amount = '''                    TextField("Amount", text: $amountText)
@@ -285,10 +280,9 @@ jobs:
                     )'''
           if old_amount not in hold:
               raise SystemExit('Hold amount input marker not found')
-          hold = hold.replace(old_amount, new_amount, 1)
-          hold_path.write_text(hold)
+          hold_path.write_text(hold.replace(old_amount, new_amount, 1))
 
-          # Feature-focused budget-walk regression tests.
+          # This feature-focused test fixture exercises the canonical walk directly.
           test_path = root / 'Actuali/ActualiTests/Services/Database/BudgetDatabaseBufferSummaryTests.swift'
           test_path.write_text('''import Testing
 import GRDB
@@ -360,15 +354,11 @@ struct BudgetDatabaseBufferSummaryTests {
         try db.write { conn in
             try conn.execute(sql: """
                 INSERT INTO category_groups (id, name, is_income, sort_order, hidden, tombstone)
-                VALUES ('g-exp', 'Expenses', 0, 1, 0, 0);
-                INSERT INTO category_groups (id, name, is_income, sort_order, hidden, tombstone)
-                VALUES ('g-inc', 'Income', 1, 2, 0, 0);
+                VALUES ('g-exp', 'Expenses', 0, 1, 0, 0), ('g-inc', 'Income', 1, 2, 0, 0);
                 INSERT INTO categories (id, name, is_income, cat_group, sort_order, hidden, tombstone)
-                VALUES ('cat-exp', 'Expenses', 0, 'g-exp', 1, 0, 0);
-                INSERT INTO categories (id, name, is_income, cat_group, sort_order, hidden, tombstone)
-                VALUES ('cat-hidden', 'Hidden', 0, 'g-exp', 2, 1, 0);
-                INSERT INTO categories (id, name, is_income, cat_group, sort_order, hidden, tombstone)
-                VALUES ('cat-inc', 'Income', 1, 'g-inc', 1, 0, 0);
+                VALUES ('cat-exp', 'Expenses', 0, 'g-exp', 1, 0, 0),
+                       ('cat-hidden', 'Hidden', 0, 'g-exp', 2, 1, 0),
+                       ('cat-inc', 'Income', 1, 'g-inc', 1, 0, 0);
                 INSERT INTO accounts (id, name, offbudget, tombstone)
                 VALUES ('acct', 'Checking', 0, 0);
             """)
@@ -376,19 +366,12 @@ struct BudgetDatabaseBufferSummaryTests {
     }
 
     @Test func autoBufferAppearsInSummaryValues() throws {
-        let db = try makeDatabase()
-        try seedBase(db)
+        let db = try makeDatabase(); try seedBase(db)
         try db.write { conn in
-            try conn.execute(sql: """
-                INSERT INTO zero_budgets (id, month, category, amount, carryover)
-                VALUES ('income-row', 202609, 'cat-inc', 0, 1);
-                INSERT INTO transactions (id, acct, category, amount, date, tombstone)
-                VALUES ('income', 'acct', 'cat-inc', 30000, 20260901, 0);
-            """)
+            try conn.execute(sql: "INSERT INTO zero_budgets (id, month, category, amount, carryover) VALUES ('income-row', 202609, 'cat-inc', 0, 1)")
+            try conn.execute(sql: "INSERT INTO transactions (id, acct, category, amount, date, tombstone) VALUES ('income', 'acct', 'cat-inc', 30000, 20260901, 0)")
         }
-        let result = try db.read { conn in
-            try BudgetDatabase.budgetWalk(conn, targetMonthInt: 202609)
-        }
+        let result = try db.read { try BudgetDatabase.budgetWalk($0, targetMonthInt: 202609) }
         #expect(result.incomeAvailable == 30000)
         #expect(result.autoBuffered == 30000)
         #expect(result.manualBuffered == 0)
@@ -397,20 +380,13 @@ struct BudgetDatabaseBufferSummaryTests {
     }
 
     @Test func manualBufferOverridesAutoBuffer() throws {
-        let db = try makeDatabase()
-        try seedBase(db)
+        let db = try makeDatabase(); try seedBase(db)
         try db.write { conn in
-            try conn.execute(sql: """
-                INSERT INTO zero_budgets (id, month, category, amount, carryover)
-                VALUES ('income-row', 202609, 'cat-inc', 0, 1);
-                INSERT INTO transactions (id, acct, category, amount, date, tombstone)
-                VALUES ('income', 'acct', 'cat-inc', 30000, 20260901, 0);
-                INSERT INTO zero_budget_months (id, buffered) VALUES ('202609', 10000);
-            """)
+            try conn.execute(sql: "INSERT INTO zero_budgets (id, month, category, amount, carryover) VALUES ('income-row', 202609, 'cat-inc', 0, 1)")
+            try conn.execute(sql: "INSERT INTO transactions (id, acct, category, amount, date, tombstone) VALUES ('income', 'acct', 'cat-inc', 30000, 20260901, 0)")
+            try conn.execute(sql: "INSERT INTO zero_budget_months (id, buffered) VALUES ('202609', 10000)")
         }
-        let result = try db.read { conn in
-            try BudgetDatabase.budgetWalk(conn, targetMonthInt: 202609)
-        }
+        let result = try db.read { try BudgetDatabase.budgetWalk($0, targetMonthInt: 202609) }
         #expect(result.autoBuffered == 30000)
         #expect(result.manualBuffered == 10000)
         #expect(result.forNextMonth == 10000)
@@ -418,19 +394,12 @@ struct BudgetDatabaseBufferSummaryTests {
     }
 
     @Test func hiddenCategoryOverspendingIsIncluded() throws {
-        let db = try makeDatabase()
-        try seedBase(db)
+        let db = try makeDatabase(); try seedBase(db)
         try db.write { conn in
-            try conn.execute(sql: """
-                INSERT INTO transactions (id, acct, category, amount, date, tombstone)
-                VALUES ('prior-spend', 'acct', 'cat-hidden', -50000, 20260815, 0);
-                INSERT INTO transactions (id, acct, category, amount, date, tombstone)
-                VALUES ('income', 'acct', 'cat-inc', 100000, 20260901, 0);
-            """)
+            try conn.execute(sql: "INSERT INTO transactions (id, acct, category, amount, date, tombstone) VALUES ('prior-spend', 'acct', 'cat-hidden', -50000, 20260815, 0)")
+            try conn.execute(sql: "INSERT INTO transactions (id, acct, category, amount, date, tombstone) VALUES ('income', 'acct', 'cat-inc', 100000, 20260901, 0)")
         }
-        let result = try db.read { conn in
-            try BudgetDatabase.budgetWalk(conn, targetMonthInt: 202609)
-        }
+        let result = try db.read { try BudgetDatabase.budgetWalk($0, targetMonthInt: 202609) }
         #expect(result.lastMonthOverspent == -50000)
         #expect(result.incomeAvailable == 100000)
         #expect(result.toBudget == 50000)
@@ -443,7 +412,6 @@ struct BudgetDatabaseBufferSummaryTests {
 }
 ''')
 
-          # Remove the one-shot workflow so it cannot be triggered again.
           (root / '.github/workflows/fix-budget-buffer-review.yml').unlink()
           PY
 
