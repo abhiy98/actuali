@@ -1,0 +1,26 @@
+name: Apply budget summary patch
+on:
+  push:
+    branches:
+      - Hold-To-Budget-for-next-month-and-reset-the-buffer
+permissions:
+  contents: write
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Apply patch
+        run: python3 .github/apply_budget_summary_patch.py
+      - name: Commit and push
+        run: |
+          git config user.name "abhiy98"
+          git config user.email "69753977+abhiy98@users.noreply.github.com"
+          git add Actuali/Actuali/Services/BudgetStore.swift Actuali/Actuali/Views/Budget/BudgetView.swift Actuali/Actuali/Views/Budget/BudgetBufferSheet.swift .github/apply_budget_summary_patch.py
+          git commit -m "Add budget summary and To Budget actions"
+          git push origin HEAD:Hold-To-Budget-for-next-month-and-reset-the-buffer
+      - name: Remove patch automation
+        run: |
+          git rm .github/apply_budget_summary_patch.py .github/workflows/apply-budget-summary.yml
+          git commit -m "Remove budget summary patch automation"
+          git push origin HEAD:Hold-To-Budget-for-next-month-and-reset-the-buffer
