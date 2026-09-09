@@ -11,16 +11,18 @@ struct EnvelopeBudgetSummary: Equatable, Sendable {
 }
 
 extension BudgetStore {
-    /// Reconstructs the envelope summary from the canonical BudgetMonth snapshots.
+    /// Reconstructs the envelope summary from canonical BudgetMonth snapshots.
     /// This keeps the SwiftUI layer from maintaining a second copy of budget math.
     func fetchEnvelopeBudgetSummary(_ month: String) async -> EnvelopeBudgetSummary? {
-        guard let database = databaseForLogger,
-              let targetMonth = Self.parseBudgetMonth(month) else { return nil }
+        guard let database = databaseForLogger, Self.isValidBudgetMonth(month) else { return nil }
 
         var snapshots: [String: BudgetMonth] = [:]
-        var cursor = targetMonth
+        var cursor = month
         var foundBaseline = false
 
+        // A quiet month is a safe zero point: nothing is budgeted, received,
+        // spent, carried, buffered, or left in To Budget. Going farther back
+        // only adds cost without changing the current recurrence.
         for _ in 0..<120 {
             guard let snapshot = try? await database.fetchBudgetMonth(month: cursor) else { return nil }
             snapshots[cursor] = snapshot
@@ -33,17 +35,14 @@ extension BudgetStore {
             cursor = previous
         }
 
-        let calculationMonths = snapshots.keys
-            .compactMap(Self.parseBudgetMonth)
-            .sorted()
+        let calculationMonths = snapshots.keys.sorted()
         guard !calculationMonths.isEmpty else { return nil }
 
         var previousToBudget = 0
         var previousForNextMonth = 0
         var targetSummary: EnvelopeBudgetSummary?
 
-        for components in calculationMonths {
-            let currentMonth = Self.formatBudgetMonth(components)
+        for currentMonth in calculationMonths {
             guard let current = snapshots[currentMonth], let toBudget = current.toBudget else { continue }
 
             let previousMonth = Self.shiftBudgetMonth(currentMonth, by: -1)
@@ -56,6 +55,10 @@ extension BudgetStore {
             let incomeAvailable = current.totalIncome + previousToBudget + previousForNextMonth
             let forNextMonth = incomeAvailable + lastMonthOverspent - budgeted - toBudget
             let manualBuffered = current.buffered
+
+            // When no manual buffer exists, any positive next-month hold came
+            // from the automatic income carryover mechanism. This is sufficient
+            // for action gating; a manual buffer takes precedence over auto.
             let autoBuffered = manualBuffered == 0 ? max(forNextMonth, 0) : 0
 
             if currentMonth == month {
@@ -78,17 +81,16 @@ extension BudgetStore {
         return targetSummary
     }
 
-    private static func parseBudgetMonth(_ month: String) -> DateComponents? {
+    private static func isValidBudgetMonth(_ month: String) -> Bool {
         let parts = month.split(separator: "-")
         guard parts.count == 2,
+              parts[0].count == 4,
+              parts[1].count == 2,
               let year = Int(parts[0]),
               let monthNumber = Int(parts[1]),
-              (1...12).contains(monthNumber) else { return nil }
-        return DateComponents(year: year, month: monthNumber, day: 1)
-    }
-
-    private static func formatBudgetMonth(_ components: DateComponents) -> String {
-        String(format: "%04d-%02d", components.year ?? 0, components.month ?? 0)
+              year > 0,
+              (1...12).contains(monthNumber) else { return false }
+        return true
     }
 
     private static func isSummaryBaseline(_ budget: BudgetMonth) -> Bool {
