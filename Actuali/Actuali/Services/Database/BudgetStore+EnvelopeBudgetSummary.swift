@@ -11,26 +11,17 @@ struct EnvelopeBudgetSummary: Equatable, Sendable {
 }
 
 extension BudgetStore {
-    /// Reconstructs the envelope summary from canonical BudgetMonth snapshots.
-    /// The view layer owns presentation only; all financial values are derived here.
+    /// Reconstructs summary values from canonical BudgetMonth snapshots.
+    /// The view layer is presentation-only and does not duplicate budget math.
     func fetchEnvelopeBudgetSummary(_ month: String) async -> EnvelopeBudgetSummary? {
         guard let database = databaseForLogger, Self.isValidBudgetMonth(month) else { return nil }
 
-        // BudgetMonth already contains the canonical rolling To Budget result.
-        // We only need to walk backward far enough to recover the effective
-        // buffer feeding each month because the model intentionally stores the
-        // synced manual buffer separately from any automatic income buffer.
         var snapshots: [String: BudgetMonth] = [:]
         var cursor = month
-        var foundBaseline = false
-
-        for _ in 0..<120 {
+        while snapshots.count < 120 {
             guard let snapshot = try? await database.fetchBudgetMonth(month: cursor) else { return nil }
             snapshots[cursor] = snapshot
-            if Self.isSummaryBaseline(snapshot) {
-                foundBaseline = true
-                break
-            }
+            if Self.isSummaryBaseline(snapshot) { break }
             guard let previous = Self.shiftBudgetMonth(cursor, by: -1) else { break }
             cursor = previous
         }
@@ -40,7 +31,6 @@ extension BudgetStore {
 
         var previousToBudget = 0
         var previousForNextMonth = 0
-        var result: EnvelopeBudgetSummary?
 
         for currentMonth in months {
             guard let current = snapshots[currentMonth], let toBudget = current.toBudget else { continue }
@@ -58,7 +48,7 @@ extension BudgetStore {
             let autoBuffered = manualBuffered == 0 ? max(forNextMonth, 0) : 0
 
             if currentMonth == month {
-                result = EnvelopeBudgetSummary(
+                return EnvelopeBudgetSummary(
                     availableFunds: availableFunds,
                     lastMonthOverspent: lastMonthOverspent,
                     budgeted: budgeted,
@@ -73,10 +63,10 @@ extension BudgetStore {
             previousForNextMonth = forNextMonth
         }
 
-        return foundBaseline ? result : result
+        return nil
     }
 
-    private static func isValidBudgetMonth(_ month: String) -> Bool {
+    nonisolated static func isValidBudgetMonth(_ month: String) -> Bool {
         let parts = month.split(separator: "-")
         guard parts.count == 2,
               parts[0].count == 4,
@@ -88,7 +78,7 @@ extension BudgetStore {
         return true
     }
 
-    private static func isSummaryBaseline(_ budget: BudgetMonth) -> Bool {
+    nonisolated static func isSummaryBaseline(_ budget: BudgetMonth) -> Bool {
         budget.toBudget == 0
             && budget.allIncomeCategories.allSatisfy { $0.received == 0 && $0.budgeted == 0 }
             && budget.allCategoryBudgets.allSatisfy {
