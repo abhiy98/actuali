@@ -1,0 +1,490 @@
+name: Fix budget buffer review
+
+on:
+  push:
+    branches:
+      - Hold-To-Budget-for-next-month-and-reset-the-buffer
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    if: contains(github.event.head_commit.message, '[apply-buffer-review-fixes]')
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Apply fixes
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 <<'PY'
+          from pathlib import Path
+          import re
+
+          root = Path('.')
+
+          # Split the previously monolithic budget buffer file into focused views.
+          source_path = root / 'Actuali/Actuali/Views/Budget/BudgetBufferSheet.swift'
+          source = source_path.read_text()
+          compact_marker = '\n/// Compact budget summary\'s interactive To Budget / Overbudgeted cell.'
+          category_marker = '\n/// Move positive To Budget into a category, or cover a negative To Budget from\n'
+          head, remainder = source.split(compact_marker, 1)
+          summary, category = remainder.split(category_marker, 1)
+          source_path.write_text(head.rstrip() + '\n')
+          (root / 'Actuali/Actuali/Views/Budget/BudgetSummaryView.swift').write_text(
+              'import SwiftUI\n' + compact_marker + summary.split('{@', 1)[0] if False else 'import SwiftUI\n' + compact_marker + summary + '\n'
+          )
+          (root / 'Actuali/Actuali/Views/Budget/BudgetToCategorySheet.swift').write_text(
+              'import SwiftUI\n' + category_marker + category.lstrip('\n')
+          )
+
+          # Consolidate summary math in BudgetDatabase's existing budget walk.
+          db_path = root / 'Actuali/Actuali/Services/Database/BudgetDatabase.swift'
+          db = db_path.read_text()
+
+          old_result = '''        /// Envelope "To Budget" at the target month (0 for tracking).
+        let toBudget: Int
+        let incomeCatIds: Set<String>'''
+          new_result = '''        /// Envelope "To Budget" at the target month (0 for tracking).
+        let toBudget: Int
+        /// Income available for the target month, matching `incomeAvailable`.
+        let incomeAvailable: Int
+        /// Negative category overspending carried into the target month.
+        let lastMonthOverspent: Int
+        /// Total amount budgeted in the target month.
+        let budgetedTotal: Int
+        /// Amount held for next month, manual or automatic.
+        let forNextMonth: Int
+        /// Raw synced manual buffer for the target month.
+        let manualBuffered: Int
+        /// Automatic income buffer for the target month.
+        let autoBuffered: Int
+        let incomeCatIds: Set<String>'''
+          if old_result not in db:
+              raise SystemExit('BudgetWalkResult marker not found')
+          db = db.replace(old_result, new_result, 1)
+
+          old_vars = '''            var runningToBudget = 0
+            var priorBuffered = 0
+            var leftoverByMonthCat: [Int: [String: Int]] = [:]'''
+          new_vars = '''            var runningToBudget = 0
+            var priorBuffered = 0
+            var leftoverByMonthCat: [Int: [String: Int]] = [:]
+            var targetIncomeAvailable = 0
+            var targetLastMonthOverspent = 0
+            var targetBudgetedTotal = 0
+            var targetForNextMonth = 0
+            var targetManualBuffered = 0
+            var targetAutoBuffered = 0'''
+          if old_vars not in db:
+              raise SystemExit('Budget walk accumulator marker not found')
+          db = db.replace(old_vars, new_vars, 1)
+
+          old_calc = '''                    let manualBuffered = bufferedByMonth[m] ?? 0
+                    let buffered = manualBuffered != 0 ? manualBuffered : bufferedAuto
+                    runningToBudget = income + runningToBudget + priorBuffered
+                        + lastMonthOverspent - budgetedTotal - buffered
+                    priorBuffered = buffered'''
+          new_calc = '''                    let manualBuffered = bufferedByMonth[m] ?? 0
+                    let buffered = manualBuffered != 0 ? manualBuffered : bufferedAuto
+                    let incomeAvailable = income + runningToBudget + priorBuffered
+                    if m == targetMonthInt {
+                        targetIncomeAvailable = incomeAvailable
+                        targetLastMonthOverspent = lastMonthOverspent
+                        targetBudgetedTotal = budgetedTotal
+                        targetForNextMonth = buffered
+                        targetManualBuffered = manualBuffered
+                        targetAutoBuffered = bufferedAuto
+                    }
+                    runningToBudget = incomeAvailable + lastMonthOverspent - budgetedTotal - buffered
+                    priorBuffered = buffered'''
+          if old_calc not in db:
+              raise SystemExit('Budget walk calculation marker not found')
+          db = db.replace(old_calc, new_calc, 1)
+
+          old_return = '''                leftoverByMonthCat: leftoverByMonthCat,
+                toBudget: runningToBudget,
+                incomeCatIds: incomeCatIds,'''
+          new_return = '''                leftoverByMonthCat: leftoverByMonthCat,
+                toBudget: runningToBudget,
+                incomeAvailable: targetIncomeAvailable,
+                lastMonthOverspent: targetLastMonthOverspent,
+                budgetedTotal: targetBudgetedTotal,
+                forNextMonth: targetForNextMonth,
+                manualBuffered: targetManualBuffered,
+                autoBuffered: targetAutoBuffered,
+                incomeCatIds: incomeCatIds,'''
+          if old_return not in db:
+              raise SystemExit('Budget walk return marker not found')
+          db = db.replace(old_return, new_return, 1)
+          db_path.write_text(db)
+
+          # Add a database-level summary value object and accessor.
+          db_path.write_text(db_path.read_text() if False else db_path.read_text())
+          db = db_path.read_text()
+          insert_before = '''    func fetchBudgetMonth(month: String) async throws -> BudgetMonth {'''
+          summary_struct = '''    struct EnvelopeBudgetSummary: Sendable, Equatable {
+        let availableFunds: Int
+        let lastMonthOverspent: Int
+        let budgeted: Int
+        let forNextMonth: Int
+        let toBudget: Int
+        let manualBuffered: Int
+        let autoBuffered: Int
+    }
+
+    func fetchEnvelopeBudgetSummary(month: String) async throws -> EnvelopeBudgetSummary? {
+        try await dbQueue.read { db in
+            let targetMonthInt = Self.monthStringToInt(month)
+            guard targetMonthInt > 0 else { return nil }
+            let walk = try Self.budgetWalk(db, targetMonthInt: targetMonthInt)
+            guard walk.isEnvelope else { return nil }
+            return EnvelopeBudgetSummary(
+                availableFunds: walk.incomeAvailable,
+                lastMonthOverspent: walk.lastMonthOverspent,
+                budgeted: walk.budgetedTotal,
+                forNextMonth: walk.forNextMonth,
+                toBudget: walk.toBudget,
+                manualBuffered: walk.manualBuffered,
+                autoBuffered: walk.autoBuffered
+            )
+        }
+    }
+
+'''
+          if insert_before not in db:
+              raise SystemExit('BudgetMonth accessor marker not found')
+          db = db.replace(insert_before, summary_struct + insert_before, 1)
+          db_path.write_text(db)
+
+          # Make BudgetStore writes read the requested month instead of trusting mutable UI state.
+          store_path = root / 'Actuali/Actuali/Services/BudgetStore.swift'
+          store = store_path.read_text()
+          old_hold = '''    func holdBudgetForNextMonth(month: String, amountCents: Int) async throws {
+        guard let budget = currentBudgetMonth, budget.month == month, let toBudget = budget.toBudget, amountCents > 0 else { throw BudgetStoreError.invalidAmount }
+        let delta = min(amountCents, max(toBudget, 0))
+        guard delta > 0 else { throw BudgetStoreError.invalidAmount }
+        guard let syncClient else { throw BudgetStoreError.syncNotConfigured }
+        try await syncClient.setBudgetBuffer(month: month, amount: budget.buffered + delta)
+        await fetchBudgetMonth(month)
+    }
+
+    func resetBudgetBuffer(month: String) async throws {
+        guard currentBudgetMonth?.month == month else { throw BudgetStoreError.invalidAmount }
+        guard let syncClient else { throw BudgetStoreError.syncNotConfigured }
+        try await syncClient.setBudgetBuffer(month: month, amount: 0)
+        await fetchBudgetMonth(month)
+    }'''
+          new_hold = '''    func fetchEnvelopeBudgetSummary(_ month: String) async -> BudgetDatabase.EnvelopeBudgetSummary? {
+        guard let database else { return nil }
+        return try? await database.fetchEnvelopeBudgetSummary(month: month)
+    }
+
+    /// Hold part or all of this envelope month's To Budget for next month.
+    func holdBudgetForNextMonth(month: String, amountCents: Int) async throws {
+        guard let budget = try? await database?.fetchBudgetMonth(month: month),
+              let budget,
+              let toBudget = budget.toBudget,
+              amountCents > 0 else {
+            throw BudgetStoreError.invalidAmount
+        }
+        let delta = min(amountCents, max(toBudget, 0))
+        guard delta > 0 else { throw BudgetStoreError.invalidAmount }
+        guard let syncClient else { throw BudgetStoreError.syncNotConfigured }
+        try await syncClient.setBudgetBuffer(month: month, amount: budget.buffered + delta)
+        await fetchBudgetMonth(month)
+    }
+
+    func resetBudgetBuffer(month: String) async throws {
+        guard let budget = try? await database?.fetchBudgetMonth(month: month), budget.month == month else {
+            throw BudgetStoreError.invalidAmount
+        }
+        guard let syncClient else { throw BudgetStoreError.syncNotConfigured }
+        try await syncClient.setBudgetBuffer(month: month, amount: 0)
+        await fetchBudgetMonth(month)
+    }'''
+          # Remove optional-binding ambiguity in the generated hold guard.
+          new_hold = new_hold.replace('guard let budget = try? await database?.fetchBudgetMonth(month: month),\n              let budget,', 'guard let database,\n              let budget = try? await database.fetchBudgetMonth(month: month),')
+          if old_hold not in store:
+              raise SystemExit('BudgetStore hold/reset block not found')
+          store = store.replace(old_hold, new_hold, 1)
+          store_path.write_text(store)
+
+          # Replace the summary view implementation with canonical database values, locale-aware labels,
+          # proper amount input, and visible reset errors.
+          summary_path = root / 'Actuali/Actuali/Views/Budget/BudgetSummaryView.swift'
+          summary = summary_path.read_text()
+          summary = summary.replace('    @State private var showingHoldSheet = false\n', '    @State private var showingHoldSheet = false\n    @State private var resetErrorMessage: String?\n', 1)
+          summary = summary.replace('        .confirmationDialog(\n', '        .alert(String(localized: "Unable to reset buffer"), isPresented: Binding(\n            get: { resetErrorMessage != nil },\n            set: { if !$0 { resetErrorMessage = nil } }\n        )) {\n            Button(String(localized: "OK"), role: .cancel) { resetErrorMessage = nil }\n        } message: {\n            Text(resetErrorMessage ?? String(localized: "The buffer could not be reset."))\n        }\n        .confirmationDialog(\n', 1)
+
+          old_actions = '''            if let summary {
+                if summary.toBudget > 0 {
+                    Button("Move to a category") { showingCategorySheet = true }
+                    if summary.manualBuffer > 0 {
+                        Button("Reset next month's buffer") {
+                            Task { try? await budgetStore.resetBudgetBuffer(month: month) }
+                        }
+                    } else {
+                        Button("Hold for next month") { showingHoldSheet = true }
+                    }
+                } else if summary.toBudget < 0 {
+                    Button("Cover from a category") { showingCategorySheet = true }
+                }
+                Button("Cancel", role: .cancel) { }
+            }'''
+          new_actions = '''            if let summary {
+                if summary.toBudget > 0 {
+                    Button("Move to a category") { showingCategorySheet = true }
+                    if summary.manualBuffered > 0 {
+                        Button("Reset next month's buffer") {
+                            Task {
+                                do {
+                                    try await budgetStore.resetBudgetBuffer(month: month)
+                                    await loadSummary()
+                                } catch {
+                                    resetErrorMessage = error.localizedDescription
+                                }
+                            }
+                        }
+                    } else if summary.autoBuffered == 0 {
+                        Button("Hold for next month") { showingHoldSheet = true }
+                    } else {
+                        Button("Disable current auto hold") {
+                            Task {
+                                do {
+                                    try await budgetStore.resetBudgetBuffer(month: month)
+                                    await loadSummary()
+                                } catch {
+                                    resetErrorMessage = error.localizedDescription
+                                }
+                            }
+                        }
+                    }
+                } else if summary.toBudget < 0 {
+                    Button("Cover from a category") { showingCategorySheet = true }
+                }
+                Button("Cancel", role: .cancel) { }
+            }'''
+          if old_actions not in summary:
+              raise SystemExit('summary actions block not found')
+          summary = summary.replace(old_actions, new_actions, 1)
+
+          start = summary.index('    private func loadSummary() async {')
+          end = summary.index('\n}\n\nprivate struct BudgetSummaryGlassModifier', start)
+          canonical_load = '''    private func loadSummary() async {
+        summary = await budgetStore.fetchEnvelopeBudgetSummary(month)
+    }
+'''
+          summary = summary[:start] + canonical_load + summary[end:]
+
+          # Use the same amount input used by the existing transfer editor.
+          old_amount = '''                    TextField("Amount", text: $amountText)
+                        .keyboardType(.decimalPad)'''
+          new_amount = '''                    AmountInputField(
+                        text: $amountText,
+                        conventionalAmountEntry: budgetStore.conventionalAmountEntry,
+                        allowsNegative: false,
+                        autofocus: true
+                    )'''
+          # This replacement belongs in the Hold editor only; summary file no longer contains it.
+          summary_path.write_text(summary)
+          hold_path = root / 'Actuali/Actuali/Views/Budget/BudgetBufferSheet.swift'
+          hold = hold_path.read_text()
+          if old_amount not in hold:
+              raise SystemExit('Hold amount input marker not found')
+          hold = hold.replace(old_amount, new_amount, 1)
+          hold = hold.replace('Text("Hold this amount")', 'Text(String(localized: "Hold this amount"))')
+          hold = hold.replace('Text("This amount will be removed from this month\'s To Budget and available to budget next month.")', 'Text(String(localized: "This amount will be removed from this month\'s To Budget and available to budget next month."))')
+          hold_path.write_text(hold)
+
+          # Localize the compact label already present and make the summary result title localized.
+          summary = summary_path.read_text()
+          summary = summary.replace('        (summary?.toBudget ?? 0) < 0 ? "Overbudgeted" : "To Budget"', '        (summary?.toBudget ?? 0) < 0\n            ? String(localized: "Overbudgeted", locale: locale)\n            : String(localized: "To Budget", locale: locale)', 1)
+          summary = summary.replace('        return "Overspent in \\(formatter.shortMonthSymbols[monthNumber - 1])"', '        return String(localized: "Overspent in") + " \\(formatter.shortMonthSymbols[monthNumber - 1])"', 1)
+          for literal in ['Budget Summary', 'Available Funds', 'Budgeted', 'For next month']:
+              summary = summary.replace(f'summaryRow("{literal}"', f'summaryRow(String(localized: "{literal}")', 1)
+          # Previous month title is dynamic and cannot be a static LocalizedStringKey.
+          summary = summary.replace('summaryRow(\n                        previousMonthTitle,', 'summaryRow(\n                        previousMonthTitle,', 1)
+          summary_path.write_text(summary)
+
+          category_path = root / 'Actuali/Actuali/Views/Budget/BudgetToCategorySheet.swift'
+          category = category_path.read_text()
+          # Static strings passed through Text remain LocalizedStringKey; dynamic section/title expressions are made explicit.
+          category = category.replace('.navigationTitle(isCovering ? "Cover Overbudgeted" : "Move to Category")', '.navigationTitle(isCovering ? String(localized: "Cover Overbudgeted") : String(localized: "Move to Category"))')
+          category = category.replace('Button(isCovering ? "Cover" : "Move") { save() }', 'Button(isCovering ? String(localized: "Cover") : String(localized: "Move")) { save() }')
+          category_path.write_text(category)
+
+          # Add feature-focused database tests.
+          test_path = root / 'Actuali/ActualiTests/Services/Database/BudgetDatabaseBufferSummaryTests.swift'
+          test_path.write_text('''import Foundation
+import Testing
+import GRDB
+@testable import Actuali
+
+@MainActor
+struct BudgetDatabaseBufferSummaryTests {
+    private func makeDatabase() throws -> DatabaseQueue {
+        let queue = try DatabaseQueue()
+        try queue.write { db in
+            try db.execute(sql: """
+                CREATE TABLE zero_budgets (
+                    id TEXT PRIMARY KEY,
+                    month INTEGER,
+                    category TEXT,
+                    amount INTEGER,
+                    carryover INTEGER,
+                    goal INTEGER,
+                    long_goal INTEGER
+                );
+                CREATE TABLE categories (
+                    id TEXT PRIMARY KEY,
+                    name TEXT,
+                    is_income INTEGER,
+                    cat_group TEXT,
+                    sort_order REAL,
+                    hidden INTEGER,
+                    tombstone INTEGER
+                );
+                CREATE TABLE category_groups (
+                    id TEXT PRIMARY KEY,
+                    name TEXT,
+                    is_income INTEGER,
+                    sort_order REAL,
+                    hidden INTEGER,
+                    tombstone INTEGER
+                );
+                CREATE TABLE category_mapping (
+                    id TEXT PRIMARY KEY,
+                    transferId TEXT
+                );
+                CREATE TABLE accounts (
+                    id TEXT PRIMARY KEY,
+                    name TEXT,
+                    type TEXT,
+                    offbudget INTEGER,
+                    tombstone INTEGER
+                );
+                CREATE TABLE transactions (
+                    id TEXT PRIMARY KEY,
+                    acct TEXT,
+                    category TEXT,
+                    amount INTEGER,
+                    date INTEGER,
+                    isParent INTEGER,
+                    isChild INTEGER,
+                    parent_id TEXT,
+                    tombstone INTEGER
+                );
+                CREATE TABLE zero_budget_months (
+                    id TEXT PRIMARY KEY,
+                    buffered INTEGER
+                );
+            """)
+        }
+        return queue
+    }
+
+    private func seedBase(_ db: DatabaseQueue) throws {
+        try db.write { conn in
+            try conn.execute(sql: """
+                INSERT INTO category_groups (id, name, is_income, sort_order, hidden, tombstone)
+                VALUES ('g-exp', 'Expenses', 0, 1, 0, 0);
+                INSERT INTO category_groups (id, name, is_income, sort_order, hidden, tombstone)
+                VALUES ('g-inc', 'Income', 1, 2, 0, 0);
+                INSERT INTO categories (id, name, is_income, cat_group, sort_order, hidden, tombstone)
+                VALUES ('cat-exp', 'Expenses', 0, 'g-exp', 1, 0, 0);
+                INSERT INTO categories (id, name, is_income, cat_group, sort_order, hidden, tombstone)
+                VALUES ('cat-hidden', 'Hidden', 0, 'g-exp', 2, 1, 0);
+                INSERT INTO categories (id, name, is_income, cat_group, sort_order, hidden, tombstone)
+                VALUES ('cat-inc', 'Income', 1, 'g-inc', 1, 0, 0);
+                INSERT INTO accounts (id, name, offbudget, tombstone)
+                VALUES ('acct', 'Checking', 0, 0);
+            """)
+        }
+    }
+
+    @Test func autoBufferAppearsInSummaryValues() throws {
+        let db = try makeDatabase()
+        try seedBase(db)
+        try db.write { conn in
+            try conn.execute(sql: """
+                INSERT INTO zero_budgets (id, month, category, amount, carryover)
+                VALUES ('income-row', 202609, 'cat-inc', 0, 1);
+                INSERT INTO transactions (id, acct, category, amount, date, tombstone)
+                VALUES ('income', 'acct', 'cat-inc', 30000, 20260901, 0);
+            """)
+        }
+
+        let result = try db.read { conn in
+            try BudgetDatabase.budgetWalk(conn, targetMonthInt: 202609)
+        }
+        #expect(result.incomeAvailable == 30000)
+        #expect(result.autoBuffered == 30000)
+        #expect(result.manualBuffered == 0)
+        #expect(result.forNextMonth == 30000)
+        #expect(result.toBudget == 0)
+    }
+
+    @Test func manualBufferOverridesAutoBuffer() throws {
+        let db = try makeDatabase()
+        try seedBase(db)
+        try db.write { conn in
+            try conn.execute(sql: """
+                INSERT INTO zero_budgets (id, month, category, amount, carryover)
+                VALUES ('income-row', 202609, 'cat-inc', 0, 1);
+                INSERT INTO transactions (id, acct, category, amount, date, tombstone)
+                VALUES ('income', 'acct', 'cat-inc', 30000, 20260901, 0);
+                INSERT INTO zero_budget_months (id, buffered) VALUES ('202609', 10000);
+            """)
+        }
+
+        let result = try db.read { conn in
+            try BudgetDatabase.budgetWalk(conn, targetMonthInt: 202609)
+        }
+        #expect(result.autoBuffered == 30000)
+        #expect(result.manualBuffered == 10000)
+        #expect(result.forNextMonth == 10000)
+        #expect(result.toBudget == 20000)
+    }
+
+    @Test func hiddenCategoryOverspendingIsIncluded() throws {
+        let db = try makeDatabase()
+        try seedBase(db)
+        try db.write { conn in
+            try conn.execute(sql: """
+                INSERT INTO transactions (id, acct, category, amount, date, tombstone)
+                VALUES ('prior-spend', 'acct', 'cat-hidden', -50000, 20260815, 0);
+                INSERT INTO transactions (id, acct, category, amount, date, tombstone)
+                VALUES ('income', 'acct', 'cat-inc', 100000, 20260901, 0);
+            """)
+        }
+
+        let result = try db.read { conn in
+            try BudgetDatabase.budgetWalk(conn, targetMonthInt: 202609)
+        }
+        #expect(result.lastMonthOverspent == -50000)
+        #expect(result.incomeAvailable == 100000)
+        #expect(result.toBudget == 50000)
+    }
+
+    @Test func monthShiftHandlesJanuaryToDecember() {
+        #expect(BudgetStore.shiftBudgetMonth("2026-01", by: -1) == "2025-12")
+        #expect(BudgetStore.shiftBudgetMonth("2026-12", by: 1) == "2027-01")
+    }
+}
+''')
+
+          # Remove this one-shot workflow after completing the patch so it does not remain in the product branch.
+          workflow = root / '.github/workflows/fix-budget-buffer-review.yml'
+          workflow.unlink()
+          PY
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add Actuali .github/workflows/fix-budget-buffer-review.yml
+          git commit -m "Apply budget buffer review fixes"
+          git push
