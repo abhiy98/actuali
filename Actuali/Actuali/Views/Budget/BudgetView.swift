@@ -1275,6 +1275,7 @@ struct CleanBudgetSummary: View {
                     SummaryStat(
                         label: "To Budget",
                         value: budgetStore.displayBalance(toBudget),
+                        budget: budget,
                         valueColor: toBudget >= 0 ? .green : .red,
                         alignment: .trailing
                     )
@@ -1296,33 +1297,50 @@ struct CleanBudgetSummary: View {
 /// The leading figure in the summary bar (To Budget / Income).
 struct SummaryStat: View {
     @EnvironmentObject private var budgetStore: BudgetStore
-    @State private var showingActions = false
-    @State private var showingHoldSheet = false
+    @State private var showingSummary = false
+
     let label: String
     let value: String
+    var budget: BudgetMonth? = nil
     var valueColor: Color = .primary
     var alignment: HorizontalAlignment = .leading
+
+    private var displayedLabel: String {
+        guard let toBudget = budget?.toBudget else { return label }
+        return toBudget < 0 ? "Overbudgeted" : "To Budget"
+    }
+
     var body: some View {
         VStack(alignment: alignment) {
-            Text(label).font(.caption).foregroundStyle(.secondary)
-            if label == "To Budget" {
-                Button { showingActions = true } label: {
-                    Text(value).font(.headline).foregroundColor(valueColor).lineLimit(1).minimumScaleFactor(0.7).animatedAmount(value)
-                }.buttonStyle(.plain).accessibilityIdentifier("budgetToBudgetAction")
+            Text(displayedLabel)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            if budget?.toBudget != nil {
+                Button {
+                    showingSummary = true
+                } label: {
+                    Text(value)
+                        .font(.headline)
+                        .foregroundColor(valueColor)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.7)
+                        .animatedAmount(value)
+                }
+                .buttonStyle(.plain)
+                .accessibilityIdentifier("budgetToBudgetAction")
             } else {
-                Text(value).font(.headline).foregroundColor(valueColor).lineLimit(1).minimumScaleFactor(0.7).animatedAmount(value)
+                Text(value)
+                    .font(.headline)
+                    .foregroundColor(valueColor)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
+                    .animatedAmount(value)
             }
         }
-        .confirmationDialog("To Budget", isPresented: $showingActions, titleVisibility: .visible) {
-            if let budget = budgetStore.currentBudgetMonth, budget.buffered > 0 {
-                Button("Reset next month's buffer") { Task { try? await budgetStore.resetBudgetBuffer(month: budget.month) } }
-            } else if let budget = budgetStore.currentBudgetMonth, let toBudget = budget.toBudget, toBudget > 0 {
-                Button("Hold for next month") { showingHoldSheet = true }
+        .sheet(isPresented: $showingSummary) {
+            if let budget {
+                BudgetSummarySheet(month: budget.month)
             }
-            Button("Cancel", role: .cancel) {}
-        }
-        .sheet(isPresented: $showingHoldSheet) {
-            if let budget = budgetStore.currentBudgetMonth { BudgetBufferSheet(month: budget.month, available: budget.toBudget ?? 0) }
         }
     }
 }

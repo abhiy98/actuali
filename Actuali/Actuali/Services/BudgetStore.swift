@@ -5966,6 +5966,12 @@ final class BudgetStore: ObservableObject {
         }
     }
 
+    /// Read one budget month without publishing it to the current Budget tab selection.
+    func fetchBudgetMonthSnapshot(_ month: String) async -> BudgetMonth? {
+        guard let database else { return nil }
+        return try? await database.fetchBudgetMonth(month: month)
+    }
+
     // MARK: - Budget Amounts
 
     /// Prior category-month rows used for Quick Assign suggestions. Reading
