@@ -127,6 +127,6 @@ struct BudgetDatabaseEnvelopeBufferTests {
         #expect(messages[0].dataset == "zero_budget_months")
         #expect(messages[0].row == "2026-09")
         #expect(messages[0].column == "buffered")
-        #expect(!messages[0].timestamp.isEmpty)
+        #expect(!messages[0].timestamp.toString().isEmpty)
     }
 }
