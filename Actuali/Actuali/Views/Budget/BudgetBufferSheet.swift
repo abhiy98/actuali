@@ -113,7 +113,7 @@ struct BudgetBufferCompactSummaryStat: View {
             }
             .buttonStyle(.plain)
         }
-        .sheet(isPresented: $showingSummary) {
+        .fullScreenCover(isPresented: $showingSummary) {
             if let budget = budgetStore.currentBudgetMonth, budget.toBudget != nil {
                 BudgetSummarySheet(month: budget.month)
             }
@@ -130,10 +130,11 @@ struct BudgetBufferCompactSummaryStat: View {
     }
 }
 
-/// PWA-style budget summary for the envelope budget's To Budget / Overbudgeted figure.
+/// Budget summary presented as a centered Liquid Glass card for an envelope budget.
 struct BudgetSummarySheet: View {
     @EnvironmentObject private var budgetStore: BudgetStore
-    @Environment(\.dismiss) private var dismiss
+    @Environment(\\.dismiss) private var dismiss
+    @Environment(\\.locale) private var locale
     @State private var summary: BudgetSummaryValues?
     @State private var showingActions = false
     @State private var showingCategorySheet = false
@@ -150,90 +151,61 @@ struct BudgetSummarySheet: View {
         let manualBuffer: Int
     }
 
-    var body: some View {
-        NavigationStack {
-            Group {
-                if let summary {
-                    Form {
-                        Section {
-                            summaryRow("Available Funds", summary.availableFunds)
-                            summaryRow(
-                                "Overspent in previous month",
-                                summary.lastMonthOverspent,
-                                tint: summary.lastMonthOverspent < 0 ? .red : .primary
-                            )
-                            summaryRow(
-                                "Budgeted",
-                                -summary.budgeted,
-                                tint: summary.budgeted > 0 ? .primary : .secondary
-                            )
-                            summaryRow(
-                                "For next month",
-                                -summary.forNextMonth,
-                                tint: summary.forNextMonth > 0 ? .primary : .secondary
-                            )
-                        }
+    private var resultTitle: String {
+        (summary?.toBudget ?? 0) < 0 ? "Overbudgeted" : "To Budget"
+    }
 
-                        Section {
-                            Button {
-                                showingActions = true
-                            } label: {
-                                LabeledContent(
-                                    summary.toBudget < 0 ? "Overbudgeted" : "To Budget",
-                                    value: budgetStore.displayBalance(summary.toBudget)
-                                )
-                                .foregroundStyle(summary.toBudget < 0 ? .red : .green)
-                            }
-                            .buttonStyle(.plain)
-                            .accessibilityIdentifier("budgetSummaryResultAction")
-                        }
-                    }
-                } else {
-                    ProgressView()
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
-                }
-            }
-            .navigationTitle("Budget Summary")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Done") { dismiss() }
-                }
-            }
+    private var previousMonthTitle: String {
+        guard let previousMonth = BudgetStore.shiftBudgetMonth(month, by: -1),
+              let monthNumber = Int(previousMonth.split(separator: "-").last ?? "0"),
+              (1...12).contains(monthNumber) else {
+            return "Overspent"
         }
+        let formatter = DateFormatter()
+        formatter.locale = locale
+        return "Overspent in \(formatter.shortMonthSymbols[monthNumber - 1])"
+    }
+
+    var body: some View {
+        ZStack {
+            Color.black.opacity(0.22)
+                .ignoresSafeArea()
+
+            glassCard
+                .padding(.horizontal, 24)
+                .frame(maxWidth: 390)
+        }
+        .presentationBackground(.clear)
         .task(id: month) {
             await loadSummary()
         }
         .confirmationDialog(
-            summary.map { $0.toBudget < 0 ? "Overbudgeted" : "To Budget" } ?? "Budget Summary",
+            resultTitle,
             isPresented: $showingActions,
             titleVisibility: .visible
         ) {
-            if let summary, summary.toBudget > 0 {
-                Button("Move to a category") { showingCategorySheet = true }
-                if summary.manualBuffer > 0 {
-                    // Preserve the existing Hold feature's reset behavior when
-                    // a manual next-month buffer is already present.
-                    Button("Reset next month's buffer") {
-                        Task { try? await budgetStore.resetBudgetBuffer(month: month) }
+            if let summary {
+                if summary.toBudget > 0 {
+                    Button("Move to a category") { showingCategorySheet = true }
+                    if summary.manualBuffer > 0 {
+                        Button("Reset next month's buffer") {
+                            Task { try? await budgetStore.resetBudgetBuffer(month: month) }
+                        }
+                    } else {
+                        Button("Hold for next month") { showingHoldSheet = true }
                     }
-                } else {
-                    Button("Hold for next month") { showingHoldSheet = true }
+                } else if summary.toBudget < 0 {
+                    Button("Cover from a category") { showingCategorySheet = true }
                 }
-                Button("Cancel", role: .cancel) {}
-            } else if summary?.toBudget ?? 0 < 0 {
-                Button("Cover from a category") { showingCategorySheet = true }
-                Button("Cancel", role: .cancel) {}
-            } else {
-                Button("Cancel", role: .cancel) {}
+                Button("Cancel", role: .cancel) { }
             }
         }
-        .sheet(isPresented: $showingHoldSheet) {
+        .fullScreenCover(isPresented: $showingHoldSheet) {
             if let summary, summary.toBudget > 0 {
                 BudgetBufferSheet(month: month, available: summary.toBudget)
             }
         }
-        .sheet(isPresented: $showingCategorySheet) {
+        .fullScreenCover(isPresented: $showingCategorySheet) {
             if let current = budgetStore.currentBudgetMonth, let toBudget = current.toBudget {
                 BudgetToCategorySheet(
                     budget: current,
@@ -242,6 +214,98 @@ struct BudgetSummarySheet: View {
                 )
             }
         }
+    }
+
+    @ViewBuilder
+    private var glassCard: some View {
+        VStack(spacing: 0) {
+            HStack {
+                Text("Budget Summary")
+                    .font(.title3.weight(.semibold))
+                Spacer()
+                Button {
+                    dismiss()
+                } label: {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 15, weight: .semibold))
+                        .frame(width: 32, height: 32)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Close Budget Summary")
+            }
+
+            Divider()
+                .padding(.vertical, 14)
+
+            if let summary {
+                VStack(spacing: 0) {
+                    summaryRow("Available Funds", summary.availableFunds)
+                    summaryRow(
+                        previousMonthTitle,
+                        summary.lastMonthOverspent,
+                        tint: summary.lastMonthOverspent < 0 ? .red : .primary
+                    )
+                    summaryRow(
+                        "Budgeted",
+                        -summary.budgeted,
+                        tint: summary.budgeted > 0 ? .primary : .secondary
+                    )
+                    summaryRow(
+                        "For next month",
+                        -summary.forNextMonth,
+                        tint: summary.forNextMonth > 0 ? .primary : .secondary
+                    )
+
+                    Divider()
+                        .padding(.vertical, 14)
+
+                    Button {
+                        showingActions = true
+                    } label: {
+                        HStack(spacing: 12) {
+                            Text(resultTitle)
+                                .font(.body.weight(.semibold))
+                            Spacer()
+                            Text(budgetStore.displayBalance(summary.toBudget))
+                                .font(.title3.weight(.semibold))
+                                .monospacedDigit()
+                                .lineLimit(1)
+                        }
+                        .frame(maxWidth: .infinity, minHeight: 48, alignment: .leading)
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(summary.toBudget < 0 ? .red : .green)
+                    .accessibilityIdentifier("budgetSummaryResultAction")
+                }
+            } else {
+                ProgressView()
+                    .frame(maxWidth: .infinity, minHeight: 180)
+            }
+        }
+        .padding(22)
+        .background {
+            if #available(iOS 26.0, *) {
+                Color.clear
+            } else {
+                RoundedRectangle(cornerRadius: 28, style: .continuous)
+                    .fill(.ultraThinMaterial)
+            }
+        }
+        .clipShape(RoundedRectangle(cornerRadius: 28, style: .continuous))
+        .modifier(BudgetSummaryGlassModifier())
+    }
+
+    @ViewBuilder
+    private func summaryRow(_ title: String, _ amount: Int, tint: Color = .primary) -> some View {
+        HStack(spacing: 12) {
+            Text(title)
+            Spacer()
+            Text(budgetStore.displayBalance(amount))
+                .monospacedDigit()
+                .foregroundStyle(tint)
+        }
+        .frame(maxWidth: .infinity, minHeight: 38, alignment: .leading)
     }
 
     private func loadSummary() async {
@@ -254,8 +318,6 @@ struct BudgetSummarySheet: View {
         let previousMonth = BudgetStore.shiftBudgetMonth(month, by: -1)
         let previous: BudgetMonth?
         if let previousMonth {
-            // This call is safe because fetchBudgetMonthSnapshot is explicitly
-            // non-mutating: it never changes the month currently shown on screen.
             previous = await budgetStore.fetchBudgetMonthSnapshot(previousMonth)
         } else {
             previous = nil
@@ -265,8 +327,6 @@ struct BudgetSummarySheet: View {
             category.carryoverEnabled ? total : total + min(0, category.available)
         } ?? 0
 
-        // The current implementation stores manual buffers in BudgetMonth.buffered.
-        // For this feature that is the selected "For next month" value.
         let buffered = current.buffered
         let availableFunds = current.totalIncome + (previous?.toBudget ?? 0) + (previous?.buffered ?? 0)
 
@@ -279,15 +339,15 @@ struct BudgetSummarySheet: View {
             manualBuffer: current.buffered
         )
     }
+}
 
+private struct BudgetSummaryGlassModifier: ViewModifier {
     @ViewBuilder
-    private func summaryRow(_ title: String, _ amount: Int, tint: Color = .primary) -> some View {
-        HStack {
-            Text(title)
-            Spacer()
-            Text(budgetStore.displayBalance(amount))
-                .monospacedDigit()
-                .foregroundStyle(tint)
+    func body(content: Content) -> some View {
+        if #available(iOS 26.0, *) {
+            content.glassEffect(.regular, in: .rect(cornerRadius: 28))
+        } else {
+            content.background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 28, style: .continuous))
         }
     }
 }

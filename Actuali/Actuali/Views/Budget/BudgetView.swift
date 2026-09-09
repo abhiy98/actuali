@@ -1337,7 +1337,7 @@ struct SummaryStat: View {
                     .animatedAmount(value)
             }
         }
-        .sheet(isPresented: $showingSummary) {
+        .fullScreenCover(isPresented: $showingSummary) {
             if let budget {
                 BudgetSummarySheet(month: budget.month)
             }
