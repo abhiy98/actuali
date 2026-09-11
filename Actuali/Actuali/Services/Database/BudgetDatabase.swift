@@ -323,6 +323,15 @@ final class BudgetDatabase: Sendable {
                 source TEXT NOT NULL
             )
         """),
+        // Envelope buffers are synced rows in Actual's zero_budget_months
+        // table. Older files may not have received the table-creation
+        // migration yet, but local writes still need a real CRDT target.
+        (1780606215006, """
+            CREATE TABLE IF NOT EXISTS zero_budget_months (
+                id TEXT PRIMARY KEY,
+                buffered INTEGER NOT NULL DEFAULT 0
+            )
+        """),
         // Upstream 1765518577215 (multiple dashboards): pages table. Only the
         // schema half of upstream's migration — upstream also mints a default
         // "Main" page and moves widgets onto it, but that half generates no
@@ -432,6 +441,7 @@ final class BudgetDatabase: Sendable {
         1780606215004, // locally minted accounts.last_sync backfill
         1770000000003, // defensive CREATE banks
         1780606215005, // device-local FinanceKit link identities
+        1780606215006, // envelope buffer rows
     ]
 
     /// Whether `runPendingMigrations()` would perform any write. Mirrors the
