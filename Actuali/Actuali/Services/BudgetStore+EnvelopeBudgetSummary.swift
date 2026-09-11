@@ -12,15 +12,13 @@ struct EnvelopeBudgetSummary: Equatable, Sendable {
 
 extension BudgetStore {
     /// Reconstructs the envelope summary from canonical BudgetMonth snapshots.
-    /// ponytail: keep this bounded at 120 months; replacing it with a single budget walk is the next
-    /// optimization if summary taps become measurable on long-lived budgets.
     func fetchEnvelopeBudgetSummary(_ month: String) async -> EnvelopeBudgetSummary? {
         guard Self.isValidBudgetMonth(month) else { return nil }
 
         var snapshots: [String: BudgetMonth] = [:]
         var cursor = month
 
-        for _ in 0..<120 {
+        while true {
             guard let snapshot = await fetchBudgetMonthSnapshot(cursor) else { return nil }
             snapshots[cursor] = snapshot
             if Self.isSummaryBaseline(snapshot) { break }
