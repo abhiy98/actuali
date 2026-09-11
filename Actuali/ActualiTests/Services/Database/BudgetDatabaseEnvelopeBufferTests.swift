@@ -7,8 +7,7 @@ struct BudgetDatabaseEnvelopeBufferTests {
     private func makeDatabase() throws -> (BudgetDatabase, URL) {
         let url = FileManager.default.temporaryDirectory
             .appendingPathComponent("buffer-\(UUID().uuidString).sqlite")
-        let queue = try DatabaseQueue(path: url.path)
-        try queue.write { db in
+        try DatabaseQueue(path: url.path).write { db in
             try db.execute(sql: """
                 CREATE TABLE accounts (
                     id TEXT PRIMARY KEY,
@@ -49,8 +48,7 @@ struct BudgetDatabaseEnvelopeBufferTests {
     }
 
     private func bufferedValue(path: URL) throws -> Int? {
-        let queue = try DatabaseQueue(path: path.path)
-        return try queue.read { db in
+        try DatabaseQueue(path: path.path).read { db in
             try Int.fetchOne(
                 db,
                 sql: "SELECT buffered FROM zero_budget_months WHERE id = ?",
@@ -59,44 +57,46 @@ struct BudgetDatabaseEnvelopeBufferTests {
         }
     }
 
+    private func storedMessageCount(path: URL) throws -> Int {
+        try DatabaseQueue(path: path.path).read { db in
+            try Int.fetchOne(
+                db,
+                sql: """
+                    SELECT COUNT(*) FROM messages_crdt
+                    WHERE dataset = ? AND row = ? AND column = ?
+                    """,
+                arguments: ["zero_budget_months", "2026-09", "buffered"]
+            ) ?? 0
+        }
+    }
+
     @Test("Buffer CRDT message creates a missing zero-budget row")
     func createsMissingRow() throws {
         let (database, path) = try makeDatabase()
-        try database.applyMessages([
-            message(amount: 500, millis: 1_700_000_000_000)
-        ])
+        try database.applyMessages([message(amount: 500, millis: 1_700_000_000_000)])
 
         #expect(try bufferedValue(path: path) == 500)
-        #expect(try database.messageTimestamps(
-            dataset: "zero_budget_months",
-            row: "2026-09"
-        ).count == 1)
+        #expect(try storedMessageCount(path: path) == 1)
     }
 
     @Test("Buffer CRDT message updates an existing zero-budget row")
     func updatesExistingRow() throws {
         let (database, path) = try makeDatabase()
-        try database.applyMessages([
-            message(amount: 500, millis: 1_700_000_000_000)
-        ])
-        try database.applyMessages([
-            message(amount: 250, millis: 1_700_000_000_001)
-        ])
+        try database.applyMessages([message(amount: 500, millis: 1_700_000_000_000)])
+        try database.applyMessages([message(amount: 250, millis: 1_700_000_000_001)])
 
         #expect(try bufferedValue(path: path) == 250)
+        #expect(try storedMessageCount(path: path) == 2)
     }
 
     @Test("Reset buffer writes zero to the synced row")
     func resetsExistingRow() throws {
         let (database, path) = try makeDatabase()
-        try database.applyMessages([
-            message(amount: 500, millis: 1_700_000_000_000)
-        ])
-        try database.applyMessages([
-            message(amount: 0, millis: 1_700_000_000_001)
-        ])
+        try database.applyMessages([message(amount: 500, millis: 1_700_000_000_000)])
+        try database.applyMessages([message(amount: 0, millis: 1_700_000_000_001)])
 
         #expect(try bufferedValue(path: path) == 0)
+        #expect(try storedMessageCount(path: path) == 2)
     }
 
     @Test("Latest buffer CRDT message wins regardless of application order")
