@@ -106,11 +106,12 @@ struct BudgetStoreSchedulePostingTriggerTests {
         return (database, tempURL)
     }
 
-    /// A postable monthly schedule whose next date is already in the past.
+    /// A postable recurring schedule whose next date is already in the past.
     private func insertDueSchedule(_ db: BudgetDatabase, dueOn: Int) throws {
+        let nextOccurrenceStart = DayDate.today().adding(days: 1).iso
         let conditionsJSON = """
             [{"op":"is","field":"acct","value":"acct-1"},
-             {"op":"is","field":"date","value":{"frequency":"monthly","start":"2026-01-15","interval":1}},
+             {"op":"is","field":"date","value":{"frequency":"monthly","start":"\(nextOccurrenceStart)","interval":1}},
              {"op":"is","field":"amount","value":-1500}]
             """
         try db.dbQueueForTesting.write { conn in
