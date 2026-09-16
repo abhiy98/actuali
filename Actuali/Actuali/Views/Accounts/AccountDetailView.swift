@@ -377,52 +377,11 @@ struct AccountDetailView: View {
         }
     }
 
-            if let pager, !pager.transactions.isEmpty {
-                let displayedTransactions = transactionsForDisplay
-                if budgetStore.transactionDisplayMode == .groupedByDate {
-                    let groups = displayedTransactions.groupedByDate()
-                    ForEach(groups) { group in
-                        Section(group.title) {
-                            ForEach(group.transactions) { transaction in
-                                TransactionListRow(
-                                    transaction: transaction,
-                                    showAccount: false,
-                                    showDate: false,
-                                    isSelectionMode: $isSelecting,
-                                    isSelected: selectedTransactionIds.contains(transaction.id),
-                                    editing: $editingTransaction,
-                                    onToggleSelect: {
-                                        selectedTransactionIds.formSymmetricDifference([transaction.id])
-                                    }
-                                )
-                            }
-                            // The sentinel rides in the last date section so
-                            // grouped mode doesn't grow a headerless section
-                            // (and its gap) of its own.
-                            if pager.hasMore, group.id == groups.last?.id {
-                                TransactionPagingSentinel(pager: pager)
-                            }
-                        }
-                    }
-                } else {
-                    Section("Recent Transactions") {
-                        ForEach(displayedTransactions) { transaction in
-                            TransactionListRow(
-                                transaction: transaction,
-                                showAccount: false,
-                                isSelectionMode: $isSelecting,
-                                isSelected: selectedTransactionIds.contains(transaction.id),
-                                editing: $editingTransaction,
-                                onToggleSelect: {
-                                    selectedTransactionIds.formSymmetricDifference([transaction.id])
-                                }
-                            )
-                        }
-                        if pager.hasMore {
     @ViewBuilder private var transactionSection: some View {
         if let pager, !pager.transactions.isEmpty {
+            let displayedTransactions = transactionsForDisplay
             if budgetStore.transactionDisplayMode == .groupedByDate {
-                let groups = pager.transactions.groupedByDate()
+                let groups = displayedTransactions.groupedByDate()
                 ForEach(groups) { group in
                     Section(group.title) {
                         ForEach(group.transactions) { transaction in
@@ -438,7 +397,7 @@ struct AccountDetailView: View {
                 }
             } else {
                 Section("Recent Transactions") {
-                    ForEach(pager.transactions) { transaction in
+                    ForEach(displayedTransactions) { transaction in
                         transactionRow(transaction)
                     }
                     if pager.hasMore {
