@@ -498,6 +498,100 @@ struct AccountDetailView: View {
         }
     }
 
+    @ToolbarContentBuilder
+    private var accountToolbarContent: some ToolbarContent {
+        ToolbarItem(placement: .primaryAction) {
+            if isSelecting {
+                Button("Done") {
+                    withAnimation {
+                        isSelecting = false
+                        selectedTransactionIds.removeAll()
+                    }
+                }
+            } else {
+                Button {
+                    showingAddTransaction = true
+                } label: {
+                    Image(systemName: "plus")
+                }
+                .accessibilityLabel("Add Transaction")
+            }
+        }
+        if !isSelecting {
+            ToolbarItem(placement: .secondaryAction) {
+                Button {
+                    withAnimation { isSelecting = true }
+                } label: {
+                    Label("Select Transactions", systemImage: "checkmark.circle")
+                }
+            }
+        }
+        if WalletImportView.isSupported {
+            ToolbarItem(placement: .secondaryAction) {
+                Button {
+                    showingWalletImport = true
+                } label: {
+                    Label("Import from Wallet", systemImage: "wallet.pass")
+                }
+            }
+        }
+        if budgetStore.bankSyncAccount(forAccountId: account.id) != nil {
+            ToolbarItem(placement: .secondaryAction) {
+                Button {
+                    Task { await budgetStore.runBankSync(accountIds: [account.id]) }
+                } label: {
+                    Label("Sync from Bank", systemImage: "building.columns")
+                }
+                .disabled(budgetStore.isBankSyncing)
+            }
+        }
+        ToolbarItem(placement: .secondaryAction) {
+            Toggle(isOn: $budgetStore.showTransactionStatusFilters) {
+                Label("Status Filters", systemImage: "line.3.horizontal.decrease.circle")
+            }
+        }
+        ToolbarItem(placement: .secondaryAction) {
+            TransactionGroupingToggle()
+        }
+        runningBalanceToolbarItem
+        ToolbarItem(placement: .secondaryAction) {
+            Toggle(isOn: $budgetStore.hideClearedTransactions) {
+                Label(
+                    "Hide Cleared Transactions",
+                    systemImage: budgetStore.hideClearedTransactions ? "eye.slash" : "eye"
+                )
+            }
+        }
+        ToolbarItem(placement: .secondaryAction) {
+            Toggle(isOn: $budgetStore.hideReconciledTransactions) {
+                Label(
+                    "Hide Reconciled Transactions",
+                    systemImage: budgetStore.hideReconciledTransactions ? "eye.slash" : "eye"
+                )
+            }
+        }
+
+        if note.supported {
+            ToolbarItem(placement: .secondaryAction) {
+                Toggle(isOn: $hideNotes) {
+                    Label(
+                        "Hide Notes",
+                        systemImage: hideNotes ? "eye.slash" : "eye"
+                    )
+                }
+                .accessibilityIdentifier("accountDetails.notesVisibility")
+            }
+        }
+
+        ToolbarItem(placement: .secondaryAction) {
+            Button {
+                showingReconcile = true
+            } label: {
+                Label("Reconcile", systemImage: "lock.fill")
+            }
+        }
+    }
+
     var body: some View {
         List {
             balanceSection
@@ -515,96 +609,7 @@ struct AccountDetailView: View {
         .navigationTitle(account.name)
         .searchable(text: $searchText, placement: .navigationBarDrawer(displayMode: .always), prompt: "Search transactions")
         .toolbar {
-            ToolbarItem(placement: .primaryAction) {
-                if isSelecting {
-                    Button("Done") {
-                        withAnimation {
-                            isSelecting = false
-                            selectedTransactionIds.removeAll()
-                        }
-                    }
-                } else {
-                    Button {
-                        showingAddTransaction = true
-                    } label: {
-                        Image(systemName: "plus")
-                    }
-                    .accessibilityLabel("Add Transaction")
-                }
-            }
-            if !isSelecting {
-                ToolbarItem(placement: .secondaryAction) {
-                    Button {
-                        withAnimation { isSelecting = true }
-                    } label: {
-                        Label("Select Transactions", systemImage: "checkmark.circle")
-                    }
-                }
-            }
-            if WalletImportView.isSupported {
-                ToolbarItem(placement: .secondaryAction) {
-                    Button {
-                        showingWalletImport = true
-                    } label: {
-                        Label("Import from Wallet", systemImage: "wallet.pass")
-                    }
-                }
-            }
-            if budgetStore.bankSyncAccount(forAccountId: account.id) != nil {
-                ToolbarItem(placement: .secondaryAction) {
-                    Button {
-                        Task { await budgetStore.runBankSync(accountIds: [account.id]) }
-                    } label: {
-                        Label("Sync from Bank", systemImage: "building.columns")
-                    }
-                    .disabled(budgetStore.isBankSyncing)
-                }
-            }
-            ToolbarItem(placement: .secondaryAction) {
-                Toggle(isOn: $budgetStore.showTransactionStatusFilters) {
-                    Label("Status Filters", systemImage: "line.3.horizontal.decrease.circle")
-                }
-            }
-            ToolbarItem(placement: .secondaryAction) {
-                TransactionGroupingToggle()
-            }
-            runningBalanceToolbarItem
-            ToolbarItem(placement: .secondaryAction) {
-                Toggle(isOn: $budgetStore.hideClearedTransactions) {
-                    Label(
-                        "Hide Cleared Transactions",
-                        systemImage: budgetStore.hideClearedTransactions ? "eye.slash" : "eye"
-                    )
-                }
-            }
-            ToolbarItem(placement: .secondaryAction) {
-                Toggle(isOn: $budgetStore.hideReconciledTransactions) {
-                    Label(
-                        "Hide Reconciled Transactions",
-                        systemImage: budgetStore.hideReconciledTransactions ? "eye.slash" : "eye"
-                    )
-                }
-            }
-
-            if note.supported {
-                ToolbarItem(placement: .secondaryAction) {
-                    Toggle(isOn: $hideNotes) {
-                        Label(
-                            "Hide Notes",
-                            systemImage: hideNotes ? "eye.slash" : "eye"
-                        )
-                    }
-                    .accessibilityIdentifier("accountDetails.notesVisibility")
-                }
-            }
-
-            ToolbarItem(placement: .secondaryAction) {
-                Button {
-                    showingReconcile = true
-                } label: {
-                    Label("Reconcile", systemImage: "lock.fill")
-                }
-            }
+            accountToolbarContent
         }
         .safeAreaInset(edge: .bottom) {
             if isSelecting, let pager {
