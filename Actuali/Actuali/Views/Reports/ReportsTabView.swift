@@ -40,12 +40,22 @@ struct ReportsTabView: View {
                         description: Text("Open or sync a budget to see reports.")
                     )
                 } else {
+                    // Keyed so per-widget @State (computed card values)
+                    // resets when switching dashboards instead of showing
+                    // the previous dashboard's numbers. Keyed to the page
+                    // the widgets came from, not the selection: keying on
+                    // the selection re-creates the dashboard around the
+                    // outgoing page's widgets, and DashboardView's load
+                    // runs once per identity — so it would fetch the
+                    // inputs that widget set needs (budgets, schedules,
+                    // custom report configs) and never re-run for the
+                    // widgets that actually land.
                     DashboardView(widgets: widgets)
                         .id(loadedPageId)
                         .safeAreaInset(edge: .top, spacing: 0) {
                             dashboardPicker
-                                // Keep the existing resting-state gap while making
-                                // the picker part of the fixed scroll boundary.
+                                // Lined up with the dashboard cards below, which
+                                // carry 6 pt of horizontal padding of their own.
                                 .padding(.horizontal, 6)
                                 .padding(.top, 8)
                         }
