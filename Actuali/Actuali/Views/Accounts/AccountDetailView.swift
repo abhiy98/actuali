@@ -21,6 +21,7 @@ struct AccountDetailView: View {
     /// stays hidden until the read confirms this file can store notes.
     @State private var note: EntityNote = .unsupported
     @State private var editingNote = false
+    @AppStorage("accountsHideNotes") private var hideNotes = false
     @State private var isSelecting = false
     @State private var selectedTransactionIds: Set<String> = []
     @State private var cycleSpend: Int = 0
@@ -91,6 +92,17 @@ struct AccountDetailView: View {
         if hideCleared { return "No uncleared transactions" }
         if hideReconciled { return "No unreconciled transactions" }
         return "No transactions"
+    }
+
+    /// Pure so the note visibility rule can be covered without constructing a
+    /// view. Search still suppresses the note even when the user preference
+    /// allows it, because account search is scoped to transactions.
+    nonisolated static func showsNote(
+        supported: Bool,
+        hidden: Bool,
+        isSearching: Bool
+    ) -> Bool {
+        supported && !hidden && !isSearching
     }
 
     /// The pager is created on first use rather than in init because its
@@ -232,47 +244,98 @@ struct AccountDetailView: View {
         )
     }
 
+    private func balanceColumn(
+        _ title: String,
+        cents: Int?,
+        alignment: HorizontalAlignment,
+        identifier: String
+    ) -> some View {
+        let value = cents.map(budgetStore.displayBalance) ?? "—"
+        return VStack(alignment: alignment, spacing: 2) {
+            Text(title)
+                .font(.caption)
+            Text(value)
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+                .minimumScaleFactor(0.8)
+                .animatedAmount(value)
+        }
+        .frame(
+            maxWidth: .infinity,
+            alignment: alignment == .leading ? .leading : .trailing
+        )
+        .accessibilityElement(children: .combine)
+        .accessibilityIdentifier(identifier)
+    }
+
+    private var balanceHeader: some View {
+        HStack(alignment: .top, spacing: 8) {
+            balanceColumn(
+                String(localized: "Cleared"),
+                cents: breakdown?.cleared,
+                alignment: .leading,
+                identifier: "accountBalance.cleared"
+            )
+
+            VStack(alignment: .center, spacing: 2) {
+                Button {
+                    withAnimation(AppAnimation.disclosure) { showingBreakdown.toggle() }
+                } label: {
+                    VStack(spacing: 2) {
+                        HStack(spacing: 4) {
+                            Text(String(localized: "Balance"))
+                                .font(.subheadline)
+                                .fontWeight(.medium)
+                            Image(systemName: "chevron.down")
+                                .font(.caption2.weight(.semibold))
+                                .foregroundStyle(.tertiary)
+                                .rotationEffect(.degrees(showingBreakdown ? 180 : 0))
+                                .opacity(breakdown == nil ? 0 : 1)
+                        }
+                        Text(budgetStore.displayBalance(currentBalance))
+                            .font(.headline)
+                            .foregroundStyle(balanceColor(for: currentBalance))
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.8)
+                            .animatedAmount(budgetStore.displayBalance(currentBalance))
+                    }
+                    .frame(maxWidth: .infinity)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityIdentifier("accountBalance.toggle")
+                .accessibilityLabel(String(format: String(localized: "Current Balance, %@"), budgetStore.displayBalance(currentBalance)))
+                .accessibilityHint(showingBreakdown
+                    ? String(localized: "Hides the balance breakdown")
+                    : String(localized: "Shows cleared, uncleared, and reconciled balances"))
+                .disabled(breakdown == nil)
+            }
+            .frame(maxWidth: .infinity, alignment: .center)
+
+            balanceColumn(
+                String(localized: "Uncleared"),
+                cents: breakdown?.uncleared,
+                alignment: .trailing,
+                identifier: "accountBalance.uncleared"
+            )
+        }
+    }
+
     @ViewBuilder private var balanceSection: some View {
         Section {
-            // Tapping the balance reveals the cleared/uncleared/reconciled
-            // split (GH #134), so the reconciled figure can be checked
-            // against a bank statement without starting a reconciliation.
-            Button {
-                withAnimation(AppAnimation.disclosure) { showingBreakdown.toggle() }
-            } label: {
-                HStack {
-                    Text(String(localized: "Current Balance"))
-                    Spacer()
-                    Text(budgetStore.displayBalance(currentBalance))
-                        .fontWeight(.semibold)
-                        .animatedAmount(budgetStore.displayBalance(currentBalance)) 
-                    if breakdown != nil {
-                        Image(systemName: "chevron.down")
-                            .font(.caption2.weight(.semibold))
-                            .foregroundStyle(.tertiary)
-                            .rotationEffect(.degrees(showingBreakdown ? 180 : 0))
-                    }
-                }
-                .contentShape(Rectangle())
+            balanceHeader
+
+            if showingBreakdown, let breakdown {
+                breakdownRow(String(localized: "Reconciled"), amount: breakdown.reconciled)
             }
-            .buttonStyle(.plain)
-            .accessibilityLabel(String(format: String(localized: "Current Balance, %@"), budgetStore.displayBalance(currentBalance)))
-            .accessibilityHint(showingBreakdown
-                ? String(localized: "Hides the balance breakdown")
-                : String(localized: "Shows cleared, uncleared, and reconciled balances"))
 
             // Headroom on a tracked card with a limit set — the figure a
             // card's balance is actually judged against, so it stays visible
             // rather than hiding behind the disclosure.
             if let headroom = creditHeadroom {
                 breakdownRow(String(localized: "Available Credit"), amount: headroom.available)
-            }
-
-            if showingBreakdown, let breakdown {
-                breakdownRow(String(localized: "Cleared"), amount: breakdown.cleared)
-                breakdownRow(String(localized: "Uncleared"), amount: breakdown.uncleared)
-                breakdownRow(String(localized: "Reconciled"), amount: breakdown.reconciled)
-                if let headroom = creditHeadroom {
+                if showingBreakdown {
                     breakdownRow(String(localized: "Credit Limit"), amount: headroom.limit)
                 }
             }
@@ -372,7 +435,11 @@ struct AccountDetailView: View {
     }
 
     @ViewBuilder private var notesSection: some View {
-        if note.supported && searchQuery == nil {
+        if Self.showsNote(
+            supported: note.supported,
+            hidden: hideNotes,
+            isSearching: searchQuery != nil
+        ) {
             noteSection
         }
     }
@@ -421,7 +488,7 @@ struct AccountDetailView: View {
         List {
             balanceSection
             billingCycleSection
-            notesSection
+            notesSection.animation(AppAnimation.disclosure, value: hideNotes)
             transactionSection
         }
         .contentMargins(.horizontal, 6, for: .scrollContent)
@@ -512,6 +579,18 @@ struct AccountDetailView: View {
                 }
             }
 
+            if note.supported {
+                ToolbarItem(placement: .secondaryAction) {
+                    Toggle(isOn: $hideNotes) {
+                        Label(
+                            "Hide Notes",
+                            systemImage: hideNotes ? "eye.slash" : "eye"
+                        )
+                    }
+                    .accessibilityIdentifier("accountDetails.notesVisibility")
+                }
+            }
+
             ToolbarItem(placement: .secondaryAction) {
                 Button {
                     showingReconcile = true
@@ -577,6 +656,7 @@ struct AccountDetailView: View {
                 // selection state, which was scoped to its rows.
                 pager = nil
                 breakdown = nil
+                showingBreakdown = false
                 cycleSpend = 0
                 recentStatements = []
                 isSelecting = false

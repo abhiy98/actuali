@@ -5920,52 +5920,6 @@
         }
       }
     },
-    "cardMappings.routesTo": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Routes to %@"
-          }
-        },
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Dirige vers %@"
-          }
-        },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Dirige a %@"
-          }
-        },
-        "pt-BR": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Direciona para %@"
-          }
-        },
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Routen zu %@"
-          }
-        },
-        "it": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Percorsi per %@"
-          }
-        },
-        "nl": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Routes naar %@"
-          }
-        }
-      }
-    },
     "cardMappings.add": {
       "localizations": {
         "en": {
@@ -6150,52 +6104,6 @@
         }
       }
     },
-    "cardMappings.details": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Mapping Details"
-          }
-        },
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Détails de l'association"
-          }
-        },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Detalles de la asociación"
-          }
-        },
-        "pt-BR": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Detalhes da associação"
-          }
-        },
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Mapping-Details"
-          }
-        },
-        "it": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Dettagli di mappatura"
-          }
-        },
-        "nl": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Details in kaart brengen"
-          }
-        }
-      }
-    },
     "cardMappings.footer": {
       "localizations": {
         "en": {
@@ -6238,6 +6146,144 @@
           "stringUnit": {
             "state": "translated",
             "value": "Voer de cijfers of het trefwoord precies in zoals uw snelkoppeling ze doorgeeft in het veld Kaart- of Accounthint."
+          }
+        }
+      }
+    },
+    "cardMappings.keywordsSection": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Keywords"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mots-clés"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Palabras clave"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Palavras-chave"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Schlüsselwörter"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Parole chiave"
+          }
+        },
+        "nl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Trefwoorden"
+          }
+        }
+      }
+    },
+    "cardMappings.addKeyword": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Add another keyword"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ajouter un autre mot-clé"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Añadir otra palabra clave"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Adicionar outra palavra-chave"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Weiteres Schlüsselwort hinzufügen"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Aggiungi un'altra parola chiave"
+          }
+        },
+        "nl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nog een trefwoord toevoegen"
+          }
+        }
+      }
+    },
+    "cardMappings.removeKeyword": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Remove Keyword"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Supprimer le mot-clé"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Eliminar palabra clave"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Remover palavra-chave"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Schlüsselwort entfernen"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Rimuovi parola chiave"
+          }
+        },
+        "nl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Trefwoord verwijderen"
           }
         }
       }
@@ -7622,6 +7668,10 @@
         }
       }
     },
+    "Discord": { "localizations": { "en": { "stringUnit": { "state": "translated", "value": "Discord" } }, "fr": { "stringUnit": { "state": "translated", "value": "Discord" } }, "es": { "stringUnit": { "state": "translated", "value": "Discord" } }, "pt-BR": { "stringUnit": { "state": "translated", "value": "Discord" } }, "de": { "stringUnit": { "state": "translated", "value": "Discord" } }, "it": { "stringUnit": { "state": "translated", "value": "Discord" } }, "nl": { "stringUnit": { "state": "translated", "value": "Discord" } } } },
+    "Email": { "localizations": { "en": { "stringUnit": { "state": "translated", "value": "Email" } }, "fr": { "stringUnit": { "state": "translated", "value": "E-mail" } }, "es": { "stringUnit": { "state": "translated", "value": "Correo electrónico" } }, "pt-BR": { "stringUnit": { "state": "translated", "value": "E-mail" } }, "de": { "stringUnit": { "state": "translated", "value": "E-Mail" } }, "it": { "stringUnit": { "state": "translated", "value": "E-mail" } }, "nl": { "stringUnit": { "state": "translated", "value": "E-mail" } } } },
+    "GitHub": { "localizations": { "en": { "stringUnit": { "state": "translated", "value": "GitHub" } }, "fr": { "stringUnit": { "state": "translated", "value": "GitHub" } }, "es": { "stringUnit": { "state": "translated", "value": "GitHub" } }, "pt-BR": { "stringUnit": { "state": "translated", "value": "GitHub" } }, "de": { "stringUnit": { "state": "translated", "value": "GitHub" } }, "it": { "stringUnit": { "state": "translated", "value": "GitHub" } }, "nl": { "stringUnit": { "state": "translated", "value": "GitHub" } } } },
+    "Help & FAQ": { "localizations": { "en": { "stringUnit": { "state": "translated", "value": "Help & FAQ" } }, "fr": { "stringUnit": { "state": "translated", "value": "Aide et FAQ" } }, "es": { "stringUnit": { "state": "translated", "value": "Ayuda y preguntas frecuentes" } }, "pt-BR": { "stringUnit": { "state": "translated", "value": "Ajuda e perguntas frequentes" } }, "de": { "stringUnit": { "state": "translated", "value": "Hilfe & FAQ" } }, "it": { "stringUnit": { "state": "translated", "value": "Aiuto e FAQ" } }, "nl": { "stringUnit": { "state": "translated", "value": "Help en FAQ" } } } },
     "Version": {
       "localizations": {
         "en": {
@@ -41560,6 +41610,17 @@
         }
       }
     },
+    "Copy last month's budget": {
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Copy last month's budget" } },
+        "fr": { "stringUnit": { "state": "translated", "value": "Copier le budget du mois dernier" } },
+        "es": { "stringUnit": { "state": "translated", "value": "Copiar el presupuesto del mes pasado" } },
+        "pt-BR": { "stringUnit": { "state": "translated", "value": "Copiar o orçamento do mês passado" } },
+        "de": { "stringUnit": { "state": "translated", "value": "Budget des letzten Monats kopieren" } },
+        "it": { "stringUnit": { "state": "translated", "value": "Copia il budget del mese scorso" } },
+        "nl": { "stringUnit": { "state": "translated", "value": "Budget van vorige maand kopiëren" } }
+      }
+    },
     "Cover each occurrence when it occurs": {
       "localizations": {
         "en": {
@@ -59522,7 +59583,8 @@
     "Statement due %1$@. Payment due %2$@.": {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "Statement due %1$@. Payment due %2$@."}}, "de": {"stringUnit": {"state": "translated", "value": "Abrechnungsbetrag fällig: %1$@. Zahlung fällig am %2$@."}}, "es": {"stringUnit": {"state": "translated", "value": "Saldo del extracto %1$@. Vencimiento el %2$@."}}, "fr": {"stringUnit": {"state": "translated", "value": "Solde du relevé %1$@. Paiement dû le %2$@."}}, "it": {"stringUnit": {"state": "translated", "value": "Estratto conto dovuto %1$@. Pagamento dovuto il %2$@."}}, "nl": {"stringUnit": {"state": "translated", "value": "Afschrift verschuldigd %1$@. Betaling vervalt op %2$@."}}, "pt-BR": {"stringUnit": {"state": "translated", "value": "Fatura a vencer %1$@. Pagamento até %2$@."}}}},
     "No Matching Transactions": {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "No Matching Transactions"}}, "de": {"stringUnit": {"state": "translated", "value": "Keine passenden Transaktionen"}}, "es": {"stringUnit": {"state": "translated", "value": "No hay transacciones coincidentes"}}, "fr": {"stringUnit": {"state": "translated", "value": "Aucune transaction correspondante"}}, "it": {"stringUnit": {"state": "translated", "value": "Nessuna transazione corrispondente"}}, "nl": {"stringUnit": {"state": "translated", "value": "Geen overeenkomende transacties"}}, "pt-BR": {"stringUnit": {"state": "translated", "value": "Nenhuma transação correspondente"}}}},
     "Try another status filter.": {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "Try another status filter."}}, "de": {"stringUnit": {"state": "translated", "value": "Versuchen Sie einen anderen Statusfilter."}}, "es": {"stringUnit": {"state": "translated", "value": "Prueba otro filtro de estado."}}, "fr": {"stringUnit": {"state": "translated", "value": "Essayez un autre filtre de statut."}}, "it": {"stringUnit": {"state": "translated", "value": "Prova un altro filtro di stato."}}, "nl": {"stringUnit": {"state": "translated", "value": "Probeer een ander statusfilter."}}, "pt-BR": {"stringUnit": {"state": "translated", "value": "Tente outro filtro de status."}}}},
-    "Show All Transactions": {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "Show All Transactions"}}, "de": {"stringUnit": {"state": "translated", "value": "Alle Transaktionen anzeigen"}}, "es": {"stringUnit": {"state": "translated", "value": "Mostrar todas las transacciones"}}, "fr": {"stringUnit": {"state": "translated", "value": "Afficher toutes les transactions"}}, "it": {"stringUnit": {"state": "translated", "value": "Mostra tutte le transazioni"}}, "nl": {"stringUnit": {"state": "translated", "value": "Alle transacties tonen"}}, "pt-BR": {"stringUnit": {"state": "translated", "value": "Mostrar todas as transações"}}}}
+    "Show All Transactions": {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "Show All Transactions"}}, "de": {"stringUnit": {"state": "translated", "value": "Alle Transaktionen anzeigen"}}, "es": {"stringUnit": {"state": "translated", "value": "Mostrar todas las transacciones"}}, "fr": {"stringUnit": {"state": "translated", "value": "Afficher toutes les transactions"}}, "it": {"stringUnit": {"state": "translated", "value": "Mostra tutte le transazioni"}}, "nl": {"stringUnit": {"state": "translated", "value": "Alle transacties tonen"}}, "pt-BR": {"stringUnit": {"state": "translated", "value": "Mostrar todas as transações"}}}},
+    "Hide Notes" : { "localizations": { "en": { "stringUnit": { "state": "translated", "value": "Hide Notes" } }, "fr": { "stringUnit": { "state": "translated", "value": "Masquer les notes" } }, "es": { "stringUnit": { "state": "translated", "value": "Ocultar notas" } }, "pt-BR": { "stringUnit": { "state": "translated", "value": "Ocultar notas" } }, "de": { "stringUnit": { "state": "translated", "value": "Notizen ausblenden" } }, "it": { "stringUnit": { "state": "translated", "value": "Nascondi note" } }, "nl": { "stringUnit": { "state": "translated", "value": "Notities verbergen" } } } }
   },
   "version": "1.0"
 }

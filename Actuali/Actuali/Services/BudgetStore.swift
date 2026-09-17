@@ -754,22 +754,19 @@ final class BudgetStore: ObservableObject {
         }
     }
 
-    /// Writes or removes a card-to-account mapping and persists it through SyncClient.
-    /// Passing nil or empty `accountId` removes the keyword mapping. Keywords in
-    /// `removingKeywords` are dropped in the same persisted write, so an edit that
-    /// renames a keyword can never leave both keys mapped.
-    func setCardAccountMapping(keyword: String, accountId: String?, removingKeywords: [String] = []) async {
-        let cleaned = keyword.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !cleaned.isEmpty else { return }
+    /// Sets keywords for an account and removes requested keywords in one batch write.
+    /// An empty account ID removes the keywords.
+    func setCardAccountMappings(accountId: String?, keywords: [String], removingKeywords: [String] = []) async {
         var updated = cardAccountMappings
-        if let accountId, !accountId.isEmpty {
-            updated[cleaned] = accountId
-        } else {
-            updated.removeValue(forKey: cleaned)
+        for key in removingKeywords + keywords {
+            updated.removeValue(forKey: key)
+            updated.removeValue(forKey: key.trimmingCharacters(in: .whitespacesAndNewlines))
         }
-        for keyword in removingKeywords {
-            updated.removeValue(forKey: keyword)
-            updated.removeValue(forKey: keyword.trimmingCharacters(in: .whitespacesAndNewlines))
+        if let accountId, !accountId.isEmpty {
+            for raw in keywords {
+                let cleaned = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+                if !cleaned.isEmpty { updated[cleaned] = accountId }
+            }
         }
         await persistCardAccountMappings(updated)
     }
@@ -6300,6 +6297,23 @@ final class BudgetStore: ObservableObject {
         }
         try await syncClient.setBudgetAmount(month: month, categoryId: categoryId, amount: amountCents)
         await fetchBudgetMonth(month)
+    }
+
+    /// Copy the visible budgeted amounts from the previous month. Tracking
+    /// budgets also budget income categories; envelope budgets do not.
+    func copyPreviousMonthBudget(month: String) async throws {
+        guard let database, let syncClient else {
+            throw BudgetStoreError.syncNotConfigured
+        }
+        guard let previousMonth = Self.shiftBudgetMonth(month, by: -1) else { return }
+        let previous = try await database.fetchBudgetMonth(month: previousMonth)
+        let budgets = previous.categoryBudgets.map {
+            GoalTemplateEngine.BudgetWrite(category: $0.categoryId, amount: $0.budgeted)
+        } + (previous.isTrackingBudget ? previous.incomeCategories.map {
+            GoalTemplateEngine.BudgetWrite(category: $0.categoryId, amount: $0.budgeted)
+        } : [])
+        try await syncClient.applyGoalTemplateWrites(month: month, budgets: budgets, goals: [])
+        await fetchBudgetMonth(requestedBudgetMonth ?? month)
     }
 
     /// Match upstream `budget/set-zero`: clear every live category, including
