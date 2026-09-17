@@ -129,6 +129,13 @@ struct ReportsTabView: View {
             .contentShape(RoundedRectangle(cornerRadius: 12))
         }
         .disabled(pages.isEmpty)
+        .overlay(alignment: .bottom) {
+            Rectangle()
+                .fill(Color(.systemBackground))
+                .frame(height: 8)
+                .offset(y: 8)
+        }
+        .zIndex(1)
         .accessibilityLabel("Switch dashboard")
     }
 
