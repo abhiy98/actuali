@@ -553,7 +553,6 @@ struct AccountDetailView: View {
         ToolbarItem(placement: .secondaryAction) {
             TransactionGroupingToggle()
         }
-        runningBalanceToolbarItem
         ToolbarItem(placement: .secondaryAction) {
             Toggle(isOn: $budgetStore.hideClearedTransactions) {
                 Label(
@@ -610,6 +609,7 @@ struct AccountDetailView: View {
         .searchable(text: $searchText, placement: .navigationBarDrawer(displayMode: .always), prompt: "Search transactions")
         .toolbar {
             accountToolbarContent
+            runningBalanceToolbarItem
         }
         .safeAreaInset(edge: .bottom) {
             if isSelecting, let pager {
