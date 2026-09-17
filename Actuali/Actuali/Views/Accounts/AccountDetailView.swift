@@ -484,6 +484,18 @@ struct AccountDetailView: View {
         }
     }
 
+    @ToolbarContentBuilder
+    private var runningBalanceToolbarItem: some ToolbarContent {
+        ToolbarItem(placement: .secondaryAction) {
+            Toggle(isOn: $showRunningBalance) {
+                Label(
+                    "Show Running Balance",
+                    systemImage: showRunningBalance ? "eye" : "eye.slash"
+                )
+            }
+        }
+    }
+
     var body: some View {
         List {
             balanceSection
@@ -554,14 +566,7 @@ struct AccountDetailView: View {
             ToolbarItem(placement: .secondaryAction) {
                 TransactionGroupingToggle()
             }
-            ToolbarItem(placement: .secondaryAction) {
-                Toggle(isOn: $showRunningBalance) {
-                    Label(
-                        "Show Running Balance",
-                        systemImage: showRunningBalance ? "eye" : "eye.slash"
-                    )
-                }
-            }
+            runningBalanceToolbarItem
             ToolbarItem(placement: .secondaryAction) {
                 Toggle(isOn: $budgetStore.hideClearedTransactions) {
                     Label(
