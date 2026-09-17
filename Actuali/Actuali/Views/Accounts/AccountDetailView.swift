@@ -42,9 +42,9 @@ struct AccountDetailView: View {
     }
 
     /// Running balances are shown only when the register is unfiltered (no search,
-    /// and not hiding cleared/reconciled rows). Filtered/search results omit rows
-    /// that would otherwise contribute to the balance, so showing a running balance
-    /// in those states would make it look like the account balance changed when
+    /// status chip, and not hiding cleared/reconciled rows). Filtered/search results
+    /// omit rows that would otherwise contribute to the balance, so showing a running
+    /// balance in those states would make it look like the account balance changed when
     /// the user only changed the visible filter.
     private var shouldShowRunningBalance: Bool {
         showRunningBalance && loadedFullHistory
@@ -137,6 +137,7 @@ struct AccountDetailView: View {
 
     private func reload() async {
         let fullHistory = searchQuery == nil
+            && budgetStore.transactionStatusFilter == .all
             && !budgetStore.hideClearedTransactions
             && !budgetStore.hideReconciledTransactions
         loadedFullHistory = false
@@ -369,13 +370,6 @@ struct AccountDetailView: View {
                         Spacer()
                         Text(dueSummary)
                             .fontWeight(.semibold)
-                            .animatedAmount(budgetStore.displayBalance(currentBalance))
-                        if breakdown != nil {
-                            Image(systemName: "chevron.down")
-                                .font(.caption2.weight(.semibold))
-                                .foregroundStyle(.tertiary)
-                                .rotationEffect(.degrees(showingBreakdown ? 180 : 0))
-                        }
                         Image(systemName: "chevron.down")
                             .font(.caption2.weight(.semibold))
                             .foregroundStyle(.tertiary)
