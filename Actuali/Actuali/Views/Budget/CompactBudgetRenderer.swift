@@ -685,7 +685,7 @@ struct CompactIncomeGroupHeader: View {
         HStack(spacing: 6) {
             DisclosureChevron(isExpanded: !isCollapsed, font: .caption.weight(.semibold))
             Text(name)
-                .font(.system(size: 12, weight: .medium))
+                .font(.system(size: 14, weight: .semibold))
                 .lineLimit(2)
                 .fixedSize(horizontal: false, vertical: true)
         }
@@ -786,7 +786,7 @@ struct CompactIncomeCategoryRow: View {
             onShowTransactions(income, nil)
         } label: {
             Text(income.categoryName)
-                .font(.system(size: 12))
+                .font(.system(size: 14))
                 .foregroundStyle(.primary)
                 .lineLimit(2)
                 .fixedSize(horizontal: false, vertical: true)
