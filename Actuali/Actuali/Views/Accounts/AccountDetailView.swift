@@ -251,6 +251,7 @@ struct AccountDetailView: View {
             transaction: transaction,
             showAccount: false,
             showDate: showDate,
+            compact: true,
             isSelectionMode: $isSelecting,
             isSelected: selectedTransactionIds.contains(transaction.id),
             editing: $editingTransaction,
@@ -458,7 +459,7 @@ struct AccountDetailView: View {
             if budgetStore.transactionDisplayMode == .groupedByDate {
                 let groups = displayedTransactions.groupedByDate()
                 ForEach(groups) { group in
-                    Section(group.title) {
+                    Section {
                         ForEach(group.transactions) { transaction in
                             transactionRow(transaction, showDate: false)
                         }
@@ -468,6 +469,9 @@ struct AccountDetailView: View {
                         if pager.hasMore, group.id == groups.last?.id {
                             TransactionPagingSentinel(pager: pager)
                         }
+                    } header: {
+                        Text(group.title)
+                            .font(.subheadline)
                     }
                 }
             } else {

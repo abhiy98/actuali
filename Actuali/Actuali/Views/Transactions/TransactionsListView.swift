@@ -237,6 +237,7 @@ struct TransactionListRow: View {
     let transaction: Transaction
     var showAccount: Bool = true
     var showDate: Bool = true
+    var compact: Bool = false
     /// A binding, so a long press on the row opens selection mode for every
     /// caller with no extra callback.
     @Binding var isSelectionMode: Bool
@@ -260,6 +261,7 @@ struct TransactionListRow: View {
                 transaction: transaction,
                 showAccount: showAccount,
                 showDate: showDate,
+                compact: compact,
                 isSelectionMode: isSelectionMode,
                 isSelected: isSelected,
                 onToggleCleared: {
@@ -369,6 +371,7 @@ struct TransactionRow: View {
     let transaction: Transaction
     var showAccount: Bool = true
     var showDate: Bool = true
+    var compact: Bool = false
     var isSelectionMode: Bool = false
     var isSelected: Bool = false
     /// Tap action for the cleared-status dot. Nil leaves the dot inert
@@ -464,7 +467,7 @@ struct TransactionRow: View {
                 ClearedIndicator(cleared: transaction.cleared, reconciled: transaction.reconciled)
                     .frame(width: 28, height: 28)
             }
-            VStack(alignment: .leading, spacing: 2) {
+            VStack(alignment: .leading, spacing: compact ? 1 : 2) {
                 // Split parents may resolve no payee (mixed child payees) —
                 // label them "Split" like the desktop app, not "Unknown".
                 // Off-budget rows say "No payee": they're commonly payee-less
@@ -475,7 +478,7 @@ struct TransactionRow: View {
                         : (isInOffBudgetAccount
                             ? String(localized: TransactionsListLocalization.noPayee, locale: locale)
                             : String(localized: TransactionsListLocalization.unknown, locale: locale))))
-                    .font(.body)
+                    .font(compact ? .subheadline : .body)
                 HStack(spacing: 4) {
                     if transaction.isParent {
                         Image(systemName: "arrow.triangle.branch")
@@ -483,7 +486,7 @@ struct TransactionRow: View {
                             .foregroundStyle(.secondary)
                     }
                     Text(categoryLabel)
-                        .font(.caption)
+                        .font(compact ? .caption2 : .caption)
                         .foregroundStyle(.secondary)
                     if let notes = transaction.notes, !notes.isEmpty {
                         let extractedTags = TagFilter.extractHashtags(from: notes)
@@ -493,47 +496,48 @@ struct TransactionRow: View {
                                 let match = budgetStore.tagsByName[clean.lowercased()]
                                 let tagColor = match?.swiftUIColor ?? .secondary
                                 Text(rawTag)
-                                    .font(.system(size: 10, weight: .semibold))
+                                    .font(.system(size: compact ? 9 : 10, weight: .semibold))
                                     .lineLimit(1)
                                     .fixedSize(horizontal: true, vertical: false)
                                     .padding(.horizontal, 5)
-                                    .padding(.vertical, 1.5)
+                                    .padding(.vertical, compact ? 1 : 1.5)
                                     .background(tagColor.opacity(0.15), in: Capsule())
                                     .foregroundStyle(tagColor)
                             }
                         }
                         Text("・")
-                            .font(.caption)
+                            .font(compact ? .caption2 : .caption)
                             .foregroundStyle(.secondary)
                         Text(notes)
-                            .font(.caption)
+                            .font(compact ? .caption2 : .caption)
                             .foregroundStyle(.secondary)
                             .lineLimit(1)
                     }
                 }
                 if showAccount {
                     Text(accountName)
-                        .font(.caption)
+                        .font(compact ? .caption2 : .caption)
                         .foregroundStyle(.secondary)
                 }
             }
             Spacer()
-            VStack(alignment: .trailing, spacing: 2) {
+            VStack(alignment: .trailing, spacing: compact ? 1 : 2) {
                 Text(budgetStore.displayBalance(transaction.amount))
+                    .font(compact ? .subheadline : .body)
                     .foregroundColor(transaction.isOutflow ? .primary : .green)
                 if let runningBalance = transaction.runningBalance {
                     Text(budgetStore.displayBalance(runningBalance))
                         .foregroundStyle(balanceColor(for: runningBalance))
-                        .font(.caption)
+                        .font(compact ? .caption2 : .caption)
                 }
                 if showDate {
                     Text(transaction.dateFormatted)
-                        .font(.caption)
+                        .font(compact ? .caption2 : .caption)
                         .foregroundStyle(.secondary)
                 }
             }
         }
-        .padding(.vertical, 2)
+        .padding(.vertical, compact ? 0 : 2)
         .onChange(of: isSelectionMode) { _, active in
             // The row's long-press gesture spans the cleared-status button
             // too, so a hold on the dot can flip this row into selection
