@@ -189,25 +189,6 @@ struct AddTransactionView: View {
         isTransfer && canConvertToTransfer
     }
 
-    /// A transfer leg takes a category only when it sits in an on-budget
-    /// account and the other side is off-budget — money leaving the budget
-    /// still needs one (Actual's rule). Tracks the live picker selections so
-    /// re-targeting the accounts shows/hides the row immediately.
-    private var editedTransferLegIsCategorizable: Bool {
-        guard let editing, isTransfer else { return false }
-        // The edited row's own account is the one in the account picker,
-        // except on an existing transfer opened from its receiving leg —
-        // there the form shows the pair as From/To and the opened row is To.
-        let openedOnDestinationLeg = editing.transferId != nil && editing.amount >= 0
-        let legAccountId = openedOnDestinationLeg ? transferToAccountId : selectedAccountId
-        let otherAccountId = openedOnDestinationLeg ? selectedAccountId : transferToAccountId
-        guard let leg = budgetStore.accounts.first(where: { $0.id == legAccountId }),
-              let other = budgetStore.accounts.first(where: { $0.id == otherAccountId }) else {
-            return false
-        }
-        return !leg.offBudget && other.offBudget
-    }
-
     private var isSplitting: Bool {
         !splitLines.isEmpty && !unsplitRequested
     }
@@ -249,8 +230,55 @@ struct AddTransactionView: View {
             }
     }
 
-    private var showsStandardCategoryFields: Bool {
-        budgetStore.accounts.first { $0.id == selectedAccountId }?.offBudget != true
+    private var categoryFieldState: TransactionCategoryFieldState {
+        guard isTransfer else {
+            let accountIsOffBudget = budgetStore.accounts.first {
+                $0.id == selectedAccountId
+            }?.offBudget == true
+            return TransactionCategoryFieldState.resolve(
+                isTransfer: false,
+                openedAccountIsOffBudget: accountIsOffBudget,
+                otherAccountIsOffBudget: false
+            )
+        }
+
+        // Transfer editing keeps the opened leg's category on that leg even
+        // though the form presents the pair as From/To.
+        let openedAccountId = if let editing, editing.amount >= 0 {
+            transferToAccountId ?? selectedAccountId
+        } else {
+            selectedAccountId
+        }
+        let openedAccountIsOffBudget = budgetStore.accounts.first {
+            $0.id == openedAccountId
+        }?.offBudget == true
+        let otherAccountId = openedAccountId == selectedAccountId
+            ? transferToAccountId
+            : selectedAccountId
+        let otherAccountIsOffBudget = otherAccountId.map { accountId in
+            budgetStore.accounts.first { $0.id == accountId }?.offBudget == true
+        } ?? false
+
+        return TransactionCategoryFieldState.resolve(
+            isTransfer: true,
+            openedAccountIsOffBudget: openedAccountIsOffBudget,
+            otherAccountIsOffBudget: otherAccountIsOffBudget
+        )
+    }
+
+    private var showsEditableCategoryField: Bool {
+        categoryFieldState == .editable
+    }
+
+    private var categoryFieldLockedLabel: String? {
+        switch categoryFieldState {
+        case .editable:
+            nil
+        case .lockedTransfer:
+            String(localized: AddTransactionLocalization.transfer, locale: locale)
+        case .lockedOffBudget:
+            String(localized: AddTransactionLocalization.offBudget, locale: locale)
+        }
     }
 
     /// Converting keeps the edited row on its own side of the transfer, so
@@ -420,23 +448,6 @@ struct AddTransactionView: View {
                                 Text(account.name).tag(String?.some(account.id))
                             }
                         }
-                        if editedTransferLegIsCategorizable {
-                            NavigationLink {
-                                CategoryPickerView(
-                                    selectedCategoryId: $selectedCategoryId,
-                                    autofocusSearch: true
-                                ) {
-                                    userPickedCategory = true
-                                }
-                            } label: {
-                                HStack {
-                                    Text("Category")
-                                    Spacer()
-                                    Text(selectedCategoryName)
-                                        .foregroundStyle(.secondary)
-                                }
-                            }
-                        }
                     }
 
                     if !isTransfer {
@@ -490,23 +501,33 @@ struct AddTransactionView: View {
                             Text("Split")
                                 .foregroundStyle(.secondary)
                         }
-                    } else if showsStandardCategoryFields, !isSplitting {
-                        NavigationLink {
-                            CategoryPickerView(
-                                selectedCategoryId: $selectedCategoryId,
-                                autofocusSearch: true
-                            ) {
-                                userPickedCategory = true
-                            }
-                        } label: {
+                    } else if !isSplitting {
+                        if let lockedLabel = categoryFieldLockedLabel {
                             HStack {
                                 Text("Category")
                                 Spacer()
-                                Text(selectedCategoryName)
+                                Text(lockedLabel)
                                     .foregroundStyle(.secondary)
                             }
+                        } else {
+                            NavigationLink {
+                                CategoryPickerView(
+                                    selectedCategoryId: $selectedCategoryId,
+                                    autofocusSearch: true
+                                ) {
+                                    userPickedCategory = true
+                                }
+                            } label: {
+                                HStack {
+                                    Text("Category")
+                                    Spacer()
+                                    Text(selectedCategoryName)
+                                        .foregroundStyle(.secondary)
+                                }
+                            }
                         }
-                        if canSplitIntoCategories, !isPendingImportReview {
+
+                        if showsEditableCategoryField, canSplitIntoCategories, !isPendingImportReview {
                             Button {
                                 startSplit()
                             } label: {
@@ -518,7 +539,7 @@ struct AddTransactionView: View {
                     DatePicker("Date", selection: $date, displayedComponents: .date)
                 }
 
-                if isSplitting, !isTransfer, showsStandardCategoryFields {
+                if isSplitting, !isTransfer, showsEditableCategoryField {
                     splitEntrySection
                 }
 
@@ -819,7 +840,7 @@ struct AddTransactionView: View {
         }
         // A blank line reads as zero for the remainder display, but the store
         // rejects zero-amount children — keep save blocked until it's filled.
-        if isSplitting, !isTransfer, showsStandardCategoryFields,
+        if isSplitting, !isTransfer, showsEditableCategoryField,
            splitRemainingCents != 0 || hasBlankSplitLine {
             return true
         }
@@ -1652,6 +1673,27 @@ struct AmountInputField: UIViewRepresentable {
     }
 }
 
+/// Describes the single category row shown for each transaction state.
+enum TransactionCategoryFieldState: Equatable {
+    case editable
+    case lockedTransfer
+    case lockedOffBudget
+
+    static func resolve(
+        isTransfer: Bool,
+        openedAccountIsOffBudget: Bool,
+        otherAccountIsOffBudget: Bool
+    ) -> Self {
+        if openedAccountIsOffBudget {
+            return .lockedOffBudget
+        }
+        if isTransfer {
+            return otherAccountIsOffBudget ? .editable : .lockedTransfer
+        }
+        return .editable
+    }
+}
+
 private enum AddTransactionLocalization {
     static let account: String.LocalizationValue = "Account"
     static let addTransaction: String.LocalizationValue = "Add Transaction"
@@ -1661,11 +1703,13 @@ private enum AddTransactionLocalization {
     static let from: String.LocalizationValue = "From"
     static let inflow: String.LocalizationValue = "Inflow"
     static let none: String.LocalizationValue = "None"
+    static let offBudget: String.LocalizationValue = "Off budget"
     static let optionalNotes: String.LocalizationValue = "Notes (optional)"
     static let optionalPayee: String.LocalizationValue = "Payee (optional)"
     static let outflow: String.LocalizationValue = "Outflow"
     static let saveChanges: String.LocalizationValue = "Save Changes"
     static let to: String.LocalizationValue = "To"
+    static let transfer: String.LocalizationValue = "Transfer"
     static let transferFrom: String.LocalizationValue = "Transfer from"
     static let transferTo: String.LocalizationValue = "Transfer to"
 }
