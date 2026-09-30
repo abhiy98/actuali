@@ -122,11 +122,12 @@ struct SettingsView: View {
                 Section {
                     ForEach(Self.shortcutItems, id: \.title) { item in
                         Link(destination: item.url) {
-                            Label {
+                             Label {
                                 Text(item.title)
                                     .foregroundStyle(.primary)
                             } icon: {
                                 Image(systemName: item.systemImage)
+                                    .foregroundStyle(.tint)
                             }
                         }
                     }
@@ -143,6 +144,7 @@ struct SettingsView: View {
                                 .foregroundStyle(.primary)
                         } icon: {
                             Image(systemName: item.systemImage)
+                                .foregroundStyle(.tint)
                         }
                     }
                         .accessibilityIdentifier("settings.privacyPolicy")
