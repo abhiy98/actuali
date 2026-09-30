@@ -14,6 +14,7 @@ struct CreditCardsSettingsView: View {
             }
         }
     }
+
     @State private var showingAddSheet = false
     @State private var editingAccountId: String?
     @State private var selectedAccountId = ""
@@ -132,7 +133,6 @@ struct CreditCardsSettingsView: View {
                     }
                 }
             }
-
         }
         .navigationTitle(String(localized: "Credit Cards"))
         .navigationBarTitleDisplayMode(.inline)
@@ -141,13 +141,16 @@ struct CreditCardsSettingsView: View {
         }
         .sheet(isPresented: Binding(
             get: { editingAccountId != nil },
-            set: { if !$0 { editingAccountId = nil } }
+            set: {
+                if !$0 {
+                    editingAccountId = nil
+                }
+            }
         )) {
             cardSheet(isEditing: true)
         }
     }
 
-    @ViewBuilder
     private func cardSheet(isEditing: Bool) -> some View {
         NavigationStack {
             Form {
@@ -265,7 +268,6 @@ struct CreditCardsSettingsView: View {
         guard let cents = budgetStore.creditCardLimits[accountId], cents != 0 else { return "" }
         return String(format: "%.2f", Double(cents) / 100.0)
     }
-
 }
 
 /// Compact card row: name + balance on top, spend + due pill on bottom.
@@ -287,8 +289,12 @@ struct CreditCardCycleRow: View {
     /// pill — the pill's own text stays `.primary`, because system yellow on a
     /// light background is about 1.4:1 and unreadable at caption size.
     nonisolated static func urgencyColor(days: Int) -> Color {
-        if days <= 3 { return .red }
-        if days <= 7 { return .orange }
+        if days <= 3 {
+            return .red
+        }
+        if days <= 7 {
+            return .orange
+        }
         return .yellow
     }
 
@@ -298,12 +304,29 @@ struct CreditCardCycleRow: View {
 
     private var statementDue: CreditCardCycle.StatementDue? {
         guard let dues = budgetStore.creditCardStatementDues[account.id] else { return nil }
-        let today = DayDate.today()
-        return dues.first { today <= $0.dueDate && $0.remainingDue > 0 }
-            ?? dues.first { today <= $0.dueDate }
+        return CreditCardCycle.pendingStatementDue(in: dues)
     }
 
-    private var isPaid: Bool { statementDue?.isPaid ?? false }
+    private var isPaid: Bool {
+        statementDue?.isPaid ?? false
+    }
+
+    /// Pill text and its VoiceOver twin. The short form drives the pill; the
+    /// long form keeps the calendar date the pill drops (GH #535).
+    private func dueText(short: Bool) -> String {
+        if isPaid {
+            return String(localized: "Paid")
+        }
+        let summary = short
+            ? cycle.dueShortSummary(dueDate: statementDue?.dueDate)
+            : cycle.dueSummary(dueDate: statementDue?.dueDate)
+        guard let due = statementDue else { return summary }
+        return CreditCardCycle.duePillText(
+            amount: budgetStore.displayBalance(due.remainingDue),
+            summary: summary,
+            remainingDue: due.remainingDue
+        )
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 3) {
@@ -324,7 +347,7 @@ struct CreditCardCycleRow: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
                 Spacer()
-                Text(isPaid ? String(localized: "Paid") : cycle.dueShortSummary(dueDate: statementDue?.dueDate))
+                Text(dueText(short: true))
                     .font(.caption2.weight(.semibold))
                     .foregroundStyle(.primary)
                     .padding(.horizontal, 7)
@@ -337,10 +360,10 @@ struct CreditCardCycleRow: View {
         }
         .padding(.vertical, 2)
         // One element per card, worded like AccountDetailView's billing cycle
-        // header — the long `dueSummary` carries the date the pill drops.
+        // header — the long form carries the date the pill drops.
         .accessibilityElement(children: .combine)
         .accessibilityLabel(
-            String(format: String(localized: "%@, balance %@, cycle spend %@, %@"), account.name, budgetStore.displayBalance(account.balance), budgetStore.displayBalance(cycleSpend), isPaid ? String(localized: "Paid") : cycle.dueSummary(dueDate: statementDue?.dueDate))
+            String(format: String(localized: "%@, balance %@, cycle spend %@, %@"), account.name, budgetStore.displayBalance(account.balance), budgetStore.displayBalance(cycleSpend), dueText(short: false))
         )
         // dataVersion is in the key so a transaction landing while this screen
         // is open refreshes the spend, the way AccountDetailView's reload does.

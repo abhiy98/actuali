@@ -8,7 +8,6 @@ import Testing
 /// queued for the server.
 @MainActor
 struct BudgetStoreNoteTests {
-
     /// The `notes` table plus messages_crdt for the sync write path. Both
     /// normally come from the downloaded budget file.
     private func makeDatabase(
@@ -23,20 +22,20 @@ struct BudgetStoreNoteTests {
                 try db.execute(sql: "CREATE TABLE notes (id TEXT PRIMARY KEY, note TEXT);")
             }
             try db.execute(sql: """
-                CREATE TABLE messages_crdt (
-                    id INTEGER PRIMARY KEY,
-                    timestamp TEXT NOT NULL UNIQUE,
-                    dataset TEXT NOT NULL,
-                    row TEXT NOT NULL,
-                    column TEXT NOT NULL,
-                    value BLOB NOT NULL
-                );
-                """)
+            CREATE TABLE messages_crdt (
+                id INTEGER PRIMARY KEY,
+                timestamp TEXT NOT NULL UNIQUE,
+                dataset TEXT NOT NULL,
+                row TEXT NOT NULL,
+                column TEXT NOT NULL,
+                value BLOB NOT NULL
+            );
+            """)
             if !seedSQL.isEmpty {
                 try db.execute(sql: seedSQL)
             }
         }
-        return (try BudgetDatabase(path: tempURL), tempURL)
+        return try (BudgetDatabase(path: tempURL), tempURL)
     }
 
     private func makeStore(database: BudgetDatabase) async throws -> BudgetStore {
@@ -79,7 +78,7 @@ struct BudgetStoreNoteTests {
     /// entirely-blank input is treated as a clear.
     @Test func realNoteIsStoredVerbatim() {
         #expect(EntityNote.normalizedForSave("  Cap at $400\n\n    - fuel separate  ")
-                == "  Cap at $400\n\n    - fuel separate  ")
+            == "  Cap at $400\n\n    - fuel separate  ")
     }
 
     // MARK: - First note for a category
@@ -124,8 +123,8 @@ struct BudgetStoreNoteTests {
 
     @Test func editingExistingNoteUpdatesRowInPlace() async throws {
         let (database, path) = try makeDatabase(seedSQL: """
-            INSERT INTO notes (id, note) VALUES ('cat-groceries', 'old note');
-            """)
+        INSERT INTO notes (id, note) VALUES ('cat-groceries', 'old note');
+        """)
         defer { cleanup(path) }
         let store = try await makeStore(database: database)
 
@@ -152,8 +151,8 @@ struct BudgetStoreNoteTests {
     /// clients showing the stale note.
     @Test func clearingNoteSavesEmptyStringRatherThanDeletingRow() async throws {
         let (database, path) = try makeDatabase(seedSQL: """
-            INSERT INTO notes (id, note) VALUES ('cat-groceries', 'old note');
-            """)
+        INSERT INTO notes (id, note) VALUES ('cat-groceries', 'old note');
+        """)
         defer { cleanup(path) }
         let store = try await makeStore(database: database)
 
@@ -211,8 +210,8 @@ struct BudgetStoreNoteTests {
     /// Actuali — the case the feature request was actually about.
     @Test func readsAccountNoteWrittenByActual() async throws {
         let (database, path) = try makeDatabase(seedSQL: """
-            INSERT INTO notes (id, note) VALUES ('account-acct-chase', 'Buffer $500');
-            """)
+        INSERT INTO notes (id, note) VALUES ('account-acct-chase', 'Buffer $500');
+        """)
         defer { cleanup(path) }
         let store = try await makeStore(database: database)
 
@@ -227,8 +226,8 @@ struct BudgetStoreNoteTests {
     /// even if a file somehow reused an id.
     @Test func accountAndCategoryNotesAreIndependent() async throws {
         let (database, path) = try makeDatabase(seedSQL: """
-            INSERT INTO notes (id, note) VALUES ('cat-groceries', 'Cap at $400/mo');
-            """)
+        INSERT INTO notes (id, note) VALUES ('cat-groceries', 'Cap at $400/mo');
+        """)
         defer { cleanup(path) }
         let store = try await makeStore(database: database)
 
@@ -236,6 +235,33 @@ struct BudgetStoreNoteTests {
 
         #expect(await store.fetchNote(id: "cat-groceries").text == "Cap at $400/mo")
         #expect(await store.fetchNote(id: EntityNote.accountNoteId("acct-chase")).text == "Buffer $500")
+    }
+
+    // MARK: - Month notes
+
+    /// Month notes are keyed `budget-YYYY-MM`, the key Actual's budget summary
+    /// reads and writes (GH #567).
+    @Test func monthNoteIdMatchesActualsBudgetMonthKey() {
+        #expect(EntityNote.monthNoteId("2026-09") == "budget-2026-09")
+    }
+
+    /// A month's note saves at the prefixed key through the normal note path
+    /// and reads back, and one written by Actual reads for its month only.
+    @Test func monthNoteRoundTripsAtBudgetMonthKey() async throws {
+        let (database, path) = try makeDatabase(seedSQL: """
+        INSERT INTO notes (id, note) VALUES ('budget-2026-08', 'Car rego due');
+        """)
+        defer { cleanup(path) }
+        let store = try await makeStore(database: database)
+
+        try await store.saveNote(id: EntityNote.monthNoteId("2026-09"), note: "Holiday month")
+
+        let rows = try noteRows(path)
+        #expect(rows.contains { $0["id"] == "budget-2026-09" && $0["note"] == "Holiday month" })
+        #expect(try noteMessages(path).first?["row"] == "budget-2026-09")
+        #expect(await store.fetchNote(id: EntityNote.monthNoteId("2026-09")).text == "Holiday month")
+        #expect(await store.fetchNote(id: EntityNote.monthNoteId("2026-08")).text == "Car rego due")
+        #expect(await store.fetchNote(id: EntityNote.monthNoteId("2026-10")).isEmpty)
     }
 
     // MARK: - Unsupported files and misconfiguration
@@ -262,7 +288,7 @@ struct BudgetStoreNoteTests {
         }
     }
 
-    @Test func fetchWithoutDatabaseIsUnsupported() async throws {
+    @Test func fetchWithoutDatabaseIsUnsupported() async {
         let store = BudgetStore.previewInstance()
 
         let note = await store.fetchNote(id: "cat-groceries")

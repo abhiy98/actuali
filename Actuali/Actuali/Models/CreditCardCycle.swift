@@ -21,8 +21,8 @@ struct CreditCardCycle: Equatable, Hashable {
     /// or `defaultDueOffsetDays` when using a fixed day of the month.
     var dueOffsetDays: Int {
         switch paymentDue {
-        case .daysAfter(let days): return days
-        case .dayOfMonth: return Self.defaultDueOffsetDays
+        case .daysAfter(let days): days
+        case .dayOfMonth: Self.defaultDueOffsetDays
         }
     }
 
@@ -135,12 +135,17 @@ struct CreditCardCycle: Equatable, Hashable {
         let dueDate: DayDate
 
         /// Whether this statement has been fully paid off.
-        var isPaid: Bool { remainingDue == 0 && statementBalance > 0 }
+        var isPaid: Bool {
+            remainingDue == 0 && statementBalance > 0
+        }
     }
 
     /// Record of a closed credit card billing statement with spend, due, and transaction metrics.
     struct StatementRecord: Identifiable, Equatable, Hashable, Sendable {
-        var id: Int { endDate.yyyymmdd }
+        var id: Int {
+            endDate.yyyymmdd
+        }
+
         let startDate: DayDate
         let endDate: DayDate
         let dueDate: DayDate
@@ -154,7 +159,21 @@ struct CreditCardCycle: Equatable, Hashable {
         let totalSpend: Int
 
         /// Whether this statement has been fully paid off.
-        var isPaid: Bool { remainingDue == 0 && statementBalance > 0 }
+        var isPaid: Bool {
+            remainingDue == 0 && statementBalance > 0
+        }
+    }
+
+    /// The statement still awaiting payment: the first unpaid one that isn't
+    /// past due, else the first not-yet-due one even if already paid. Shared
+    /// by AccountDetailView and the cards row so both screens pick the same
+    /// statement (GH #535).
+    static func pendingStatementDue(
+        in dues: [StatementDue],
+        today: DayDate = .today()
+    ) -> StatementDue? {
+        dues.first { today <= $0.dueDate && $0.remainingDue > 0 }
+            ?? dues.first { today <= $0.dueDate }
     }
 
     /// Computes the statement payment status given raw balances and payments.
@@ -193,8 +212,12 @@ struct CreditCardCycle: Equatable, Hashable {
     func dueSummary(for today: DayDate = .today(), dueDate: DayDate? = nil) -> String {
         let dueDate = dueDate ?? upcomingDueDate(for: today)
         let days = daysUntilDue(for: today, dueDate: dueDate)
-        if days == 0 { return String(localized: "Due today") }
-        if days == 1 { return String(localized: "Due tomorrow") }
+        if days == 0 {
+            return String(localized: "Due today")
+        }
+        if days == 1 {
+            return String(localized: "Due tomorrow")
+        }
         let dueStr = Transaction.formattedDate(from: dueDate.yyyymmdd, style: .abbreviated)
         return String(format: String(localized: "Due %@ (%lldd)"), dueStr, Int64(days))
     }
@@ -207,5 +230,19 @@ struct CreditCardCycle: Equatable, Hashable {
         return days <= 1
             ? dueSummary(for: today, dueDate: dueDate)
             : String(format: String(localized: "Due in %lldd"), Int64(days))
+    }
+
+    /// Amount line for a credit card row in the bills list: "Due $342.18" while
+    /// the statement is owed, the plain amount once paid — the row's status text
+    /// already says "Paid" (GH #535). The label is a parameter so tests pin the
+    /// spacing without locale setup.
+    static func billAmountText(dueLabel: String, amount: String, isPaid: Bool) -> String {
+        isPaid ? amount : "\(dueLabel) \(amount)"
+    }
+
+    /// Cards-row due pill: "$342.18 · Due in 27d". A settled statement (zero
+    /// remaining due) shows the summary alone (GH #535).
+    static func duePillText(amount: String, summary: String, remainingDue: Int) -> String {
+        remainingDue > 0 ? "\(amount) · \(summary)" : summary
     }
 }

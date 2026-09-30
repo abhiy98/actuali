@@ -4,7 +4,6 @@ import XCTest
 /// expand/collapse and the spent-category filter all sit behind one
 /// navigation-bar button.
 final class BudgetOptionsMenuUITests: XCTestCase {
-
     @MainActor private func launchBudgetTab(_ app: XCUIApplication) {
         // Seed the persisted toggles: they survive between launches for real
         // in the simulator, so start from a known state whatever earlier runs
@@ -24,7 +23,7 @@ final class BudgetOptionsMenuUITests: XCTestCase {
     }
 
     @MainActor
-    func testMenuOffersEveryBudgetViewOption() throws {
+    func testMenuOffersEveryBudgetViewOption() {
         let app = XCUIApplication()
         launchBudgetTab(app)
 
@@ -48,7 +47,7 @@ final class BudgetOptionsMenuUITests: XCTestCase {
     }
 
     @MainActor
-    func testCompactControlsAreConditionalAndCorrectlyDefaulted() throws {
+    func testCompactControlsAreConditionalAndCorrectlySeeded() {
         let app = XCUIApplication()
         launchBudgetTab(app)
 
@@ -64,7 +63,8 @@ final class BudgetOptionsMenuUITests: XCTestCase {
         XCTAssertTrue(spent.exists)
         XCTAssertTrue(overview.isSelected, "Show Overview defaults on")
         XCTAssertTrue(app.buttons["Group Totals"].exists)
-        XCTAssertFalse(spent.isSelected, "Show Spent Column defaults off")
+        XCTAssertFalse(spent.isSelected,
+                       "the launch argument seeds Show Spent Column off")
         XCTAssertFalse(app.buttons["Progress Indicators"].exists,
                        "Compact uses the shared Budget Progress Bars setting")
 
@@ -81,7 +81,7 @@ final class BudgetOptionsMenuUITests: XCTestCase {
     /// Flip the launch-seeded state and put it back so the persisted setting
     /// still cannot leak into another test.
     @MainActor
-    func testStatusFilterStripTogglesFromTheMenu() throws {
+    func testStatusFilterStripTogglesFromTheMenu() {
         let app = XCUIApplication()
         launchBudgetTab(app)
 
@@ -114,7 +114,7 @@ final class BudgetOptionsMenuUITests: XCTestCase {
     }
 
     @MainActor
-    func testHideSpentCategoriesTogglesFromTheMenu() throws {
+    func testHideSpentCategoriesTogglesFromTheMenu() {
         let app = XCUIApplication()
         launchBudgetTab(app)
 
@@ -122,7 +122,7 @@ final class BudgetOptionsMenuUITests: XCTestCase {
         XCTAssertTrue(optionsMenu.waitForExistence(timeout: 10))
         XCTAssertTrue(app.buttons["Details for Groceries"].firstMatch
             .waitForExistence(timeout: 10),
-                      "demo data should show the Essentials categories")
+            "demo data should show the Essentials categories")
 
         optionsMenu.tap()
         let hideSpent = app.buttons["Hide Spent Categories"]

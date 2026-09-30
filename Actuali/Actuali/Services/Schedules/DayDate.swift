@@ -10,7 +10,9 @@ struct DayDate: Comparable, Hashable {
         return c
     }()
 
-    init(year: Int, month: Int, day: Int) { self.year = year; self.month = month; self.day = day }
+    init(year: Int, month: Int, day: Int) {
+        self.year = year; self.month = month; self.day = day
+    }
 
     init?(yyyymmdd: Int) {
         let y = yyyymmdd / 10000, m = (yyyymmdd / 100) % 100, d = yyyymmdd % 100
@@ -27,18 +29,34 @@ struct DayDate: Comparable, Hashable {
         self.init(year: y, month: m, day: d)
     }
 
-    var yyyymmdd: Int { year * 10000 + month * 100 + day }
-    var iso: String { String(format: "%04d-%02d-%02d", year, month, day) }
+    var yyyymmdd: Int {
+        year * 10000 + month * 100 + day
+    }
 
-    static func < (a: DayDate, b: DayDate) -> Bool { a.yyyymmdd < b.yyyymmdd }
+    var iso: String {
+        String(format: "%04d-%02d-%02d", year, month, day)
+    }
+
+    static func < (a: DayDate, b: DayDate) -> Bool {
+        a.yyyymmdd < b.yyyymmdd
+    }
 
     static func lastDay(year: Int, month: Int) -> Int {
         let date = utcCalendar.date(from: DateComponents(year: year, month: month, day: 1))!
         return utcCalendar.range(of: .day, in: .month, for: date)!.count
     }
 
-    private var utcDate: Date {
+    /// This calendar day as a `Date`, pinned to midday UTC so a timezone shift
+    /// can't slide it into the neighbouring day. Exposed for Swift Charts,
+    /// whose axes plot `Date` — the schedule math all stays on `DayDate`.
+    var utcDate: Date {
         DayDate.utcCalendar.date(from: DateComponents(year: year, month: month, day: day, hour: 12))!
+    }
+
+    /// "Sep 26, 2026" in the user's locale. Formatted in UTC to match
+    /// `utcDate`, so the day shown is the day stored in any timezone.
+    var displayText: String {
+        utcDate.formatted(Date.FormatStyle(date: .abbreviated, time: .omitted, timeZone: .gmt))
     }
 
     func adding(days: Int) -> DayDate {
@@ -48,15 +66,20 @@ struct DayDate: Comparable, Hashable {
     }
 
     /// 1 = Sunday ... 7 = Saturday.
-    var weekday: Int { DayDate.utcCalendar.component(.weekday, from: utcDate) }
-    var isWeekend: Bool { weekday == 1 || weekday == 7 }
+    var weekday: Int {
+        DayDate.utcCalendar.component(.weekday, from: utcDate)
+    }
+
+    var isWeekend: Bool {
+        weekday == 1 || weekday == 7
+    }
 
     /// Today in the user's local calendar — the only place local time enters.
     static func today(calendar: Calendar = .current, now: Date = Date()) -> DayDate {
         let c = calendar.dateComponents([.year, .month, .day], from: now)
         return DayDate(year: c.year!, month: c.month!, day: c.day!)
     }
-    
+
     /// Whole calendar days from this day to `other`; negative when `other` is
     /// earlier. Both ends are anchored at UTC noon, so no DST transition can
     /// round the difference off by one.

@@ -4,7 +4,6 @@ import XCTest
 /// must open the sheet in edit mode, pre-filled with the existing keyword and
 /// target account, and saving must update the mapping in place.
 final class CardMappingEditUITests: XCTestCase {
-
     @MainActor
     private func openCardMappings(in app: XCUIApplication) {
         let automationRow = app.buttons["Transactions & Automation"]
@@ -12,7 +11,8 @@ final class CardMappingEditUITests: XCTestCase {
                       "Transactions & Automation row not found")
         automationRow.tap()
 
-        let mappingsRow = app.buttons["Card & Account Mappings"]
+        // The label carries a count badge ("…, 3") for the seeded mappings.
+        let mappingsRow = app.buttons.matching(NSPredicate(format: "label BEGINSWITH 'Card & Account Mappings'")).firstMatch
         XCTAssertTrue(mappingsRow.waitForExistence(timeout: 5),
                       "Card & Account Mappings row not found")
         mappingsRow.tap()
@@ -23,13 +23,33 @@ final class CardMappingEditUITests: XCTestCase {
     /// Creates a mapping through the add sheet. The demo budget has no default
     /// account, so the sheet seeds the first open account (Chase Checking).
     @MainActor
+    private func typeText(_ text: String, into field: XCUIElement, in app: XCUIApplication) {
+        // On iOS 26+ the tap on a sheet's text field intermittently fails to
+        // make it first responder, and a follow-up typeText dies with
+        // "Neither element nor any descendant has keyboard focus". The
+        // software keyboard is the focus signal: re-tap until it shows.
+        for attempt in 1...3 {
+            if app.keyboards.firstMatch.exists {
+                break
+            }
+            if attempt > 1 {
+                field.tap()
+            }
+            _ = app.keyboards.firstMatch.waitForExistence(timeout: 3)
+        }
+        XCTAssertTrue(app.keyboards.firstMatch.exists,
+                      "keyboard did not appear after tapping \(field.identifier.isEmpty ? "field" : field.identifier)")
+        field.typeText(text)
+    }
+
+    @MainActor
     private func addMapping(_ keyword: String, in app: XCUIApplication) {
         app.buttons["Add Card Mapping"].tap()
 
         let field = app.textFields["cardMappings.keywordField"]
         XCTAssertTrue(field.waitForExistence(timeout: 5), "keyword field not found")
         field.tap()
-        field.typeText(keyword)
+        typeText(keyword, into: field, in: app)
         let saveButton = app.buttons.matching(NSPredicate(format: "label BEGINSWITH 'Save'")).firstMatch
         _ = saveButton.waitForExistence(timeout: 5)
         let savePredicate = NSPredicate(format: "isEnabled == true")
@@ -48,7 +68,7 @@ final class CardMappingEditUITests: XCTestCase {
     }
 
     @MainActor
-    func testTappingRowOpensEditSheetPrefilledAndSavingUpdatesTarget() throws {
+    func testTappingRowOpensEditSheetPrefilledAndSavingUpdatesTarget() {
         let app = XCUIApplication()
         app.launchArguments = ["-loadDemoData", "-initialTab", "4"]
         app.launch()
@@ -81,8 +101,29 @@ final class CardMappingEditUITests: XCTestCase {
                       "saving the edit did not retarget the mapping")
     }
 
+    /// Issue #534: the first sheet presented on the screen opened empty, so
+    /// editing a seeded mapping straight away must still come up pre-filled.
     @MainActor
-    func testAddingAndRemovingMultipleKeywords() throws {
+    func testFirstEditOnScreenIsPrefilled() {
+        let app = XCUIApplication()
+        app.launchArguments = ["-loadDemoData", "-initialTab", "4"]
+        app.launch()
+        openCardMappings(in: app)
+
+        let row = app.buttons["cardMappings.row.4417"]
+        XCTAssertTrue(row.waitForExistence(timeout: 5), "seeded Apple Card mapping row not found")
+        row.tap()
+        XCTAssertTrue(app.navigationBars["Edit Mapping"].waitForExistence(timeout: 5),
+                      "first tap did not open the sheet in edit mode")
+        let field = app.textFields["cardMappings.keywordField"]
+        XCTAssertTrue(field.waitForExistence(timeout: 5), "edit sheet has no keyword field")
+        XCTAssertEqual(field.value as? String, "4417", "first edit did not pre-fill the keyword")
+        XCTAssertEqual(app.textFields["cardMappings.keywordField.1"].value as? String, "Goldman Sachs",
+                       "first edit did not pre-fill the second keyword")
+    }
+
+    @MainActor
+    func testAddingAndRemovingMultipleKeywords() {
         let app = XCUIApplication()
         app.launchArguments = ["-loadDemoData", "-initialTab", "4"]
         app.launch()
@@ -94,7 +135,7 @@ final class CardMappingEditUITests: XCTestCase {
         XCTAssertTrue(firstField.waitForExistence(timeout: 5), "keyword field not found")
         XCTAssertTrue(firstField.isHittable, "keyword field is not hittable")
         firstField.tap()
-        firstField.typeText("246813")
+        typeText("246813", into: firstField, in: app)
         let firstValue = XCTNSPredicateExpectation(
             predicate: NSPredicate(format: "value == '246813'"), object: firstField
         )
@@ -104,7 +145,7 @@ final class CardMappingEditUITests: XCTestCase {
         XCTAssertTrue(secondField.waitForExistence(timeout: 5), "second keyword field not found")
         XCTAssertTrue(secondField.isHittable, "second keyword field is not hittable")
         secondField.tap()
-        secondField.typeText("975310")
+        typeText("975310", into: secondField, in: app)
         let secondValue = XCTNSPredicateExpectation(
             predicate: NSPredicate(format: "value == '975310'"), object: secondField
         )
@@ -121,7 +162,7 @@ final class CardMappingEditUITests: XCTestCase {
         XCTAssertTrue(replacementField.waitForExistence(timeout: 5), "replacement keyword field not found")
         XCTAssertTrue(replacementField.isHittable, "replacement keyword field is not hittable")
         replacementField.tap()
-        replacementField.typeText("975310")
+        typeText("975310", into: replacementField, in: app)
 
         app.buttons["Save"].tap()
         XCTAssertTrue(app.navigationBars["Add Mapping"].waitForNonExistence(timeout: 5),

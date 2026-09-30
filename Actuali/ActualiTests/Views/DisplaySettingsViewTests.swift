@@ -3,7 +3,6 @@ import Testing
 @testable import Actuali
 
 struct DisplaySettingsViewTests {
-
     private let appBundle = Bundle(identifier: "com.mfazz.ActualiOS")!
 
     @Test func settingsLabelsUseRequestedLocale() {
@@ -32,6 +31,12 @@ struct DisplaySettingsViewTests {
             currentRequest: currentRequest,
             taskIsCancelled: false
         ))
+    }
+
+    @Test func currencyOptionsIncludeVND() {
+        #expect(currencyOptions.first { $0.code == "VND" }?.symbol == "₫")
+        #expect(currencyOptions.map(\.code) == currencyOptions.map(\.code).sorted())
+        #expect(Set(currencyOptions.map(\.code)).count == currencyOptions.count)
     }
 
     @Test func publishesResultsForCurrentBudgetAndDatabase() {

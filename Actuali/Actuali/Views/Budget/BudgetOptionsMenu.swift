@@ -2,20 +2,19 @@ import SwiftUI
 
 enum BudgetCategoryFilter: String, CaseIterable, Identifiable {
     case all
-    case needsAttention
     case overspent
     case unassigned
     case approachingLimit
     case onTrack
 
-    var id: Self { self }
+    var id: Self {
+        self
+    }
 
     func includes(_ category: CategoryBudget) -> Bool {
         switch self {
         case .all:
             true
-        case .needsAttention:
-            category.progressState == .overspent || category.progressState == .unassigned
         case .overspent:
             category.progressState == .overspent
         case .unassigned:
@@ -166,6 +165,10 @@ struct BudgetOptionsMenu: View {
                         Label("Group Totals", systemImage: "sum")
                     }
                 }
+                Toggle(isOn: $budgetStore.showBudgetedAmounts) {
+                    Label("Budgeted Amounts", systemImage: "banknote")
+                }
+                .accessibilityIdentifier("budgetOptions.showBudgetedAmounts")
                 Toggle(isOn: $budgetStore.showBudgetCheckInStrip) {
                     Label("Status Filters", systemImage: "line.3.horizontal.decrease.circle")
                 }

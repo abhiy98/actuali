@@ -1,6 +1,6 @@
 import Foundation
-import Testing
 import GRDB
+import Testing
 @testable import Actuali
 
 /// Split transaction behavior at the database layer (GH #47):
@@ -10,7 +10,6 @@ import GRDB
 /// - `insertSplit` writes parent + children + CRDT messages atomically
 @MainActor
 struct BudgetDatabaseSplitTests {
-
     /// Sendable projection of the transaction columns under test, decoded inside
     /// the `read` closure so no non-Sendable `Row` crosses the actor boundary.
     private struct SplitRow: FetchableRecord {
@@ -253,7 +252,7 @@ struct BudgetDatabaseSplitTests {
         #expect(txns.first?.splitPortions == [
             .init(categoryName: "Fun", amount: -6000),
             .init(categoryName: "Food", amount: -3000),
-            .init(categoryName: "Food", amount: -1000)
+            .init(categoryName: "Food", amount: -1000),
         ])
     }
 
@@ -274,7 +273,7 @@ struct BudgetDatabaseSplitTests {
         let txns = try await db.fetchTransactions()
         #expect(txns.first?.splitPortions == [
             .init(categoryName: nil, amount: -6000),
-            .init(categoryName: nil, amount: -4000)
+            .init(categoryName: nil, amount: -4000),
         ])
     }
 
@@ -320,6 +319,45 @@ struct BudgetDatabaseSplitTests {
         #expect(children.allSatisfy { $0.parentId == "parent" })
     }
 
+    @Test func fetchAllLiveTransactionsSeparatesParentsFromChildren() async throws {
+        let (db, url) = try makeDatabase()
+        defer { cleanup(url) }
+        try await seedPayees(db)
+
+        try await db.dbQueueForTesting.write { conn in
+            try conn.execute(sql: """
+                INSERT INTO transactions (id, acct, category, description, amount, date, isParent, isChild, parent_id, sort_order, tombstone) VALUES
+                    ('parent',  'acct-1', NULL,       'payee-market', -10000, 20260601, 1, 0, NULL,     10, 0),
+                    ('c-first', 'acct-1', 'cat-food', NULL,            -6000, 20260601, 0, 1, 'parent',  9, 0),
+                    ('c-second','acct-1', 'cat-fun',  NULL,            -4000, 20260601, 0, 1, 'parent',  8, 0),
+                    ('c-dead',  'acct-1', 'cat-fun',  NULL,            -1000, 20260601, 0, 1, 'parent',  7, 1),
+                    ('plain',   'acct-1', 'cat-food', NULL,            -2000, 20260601, 0, 0, NULL,      6, 0),
+                    ('deleted', 'acct-1', 'cat-food', NULL,            -2000, 20260601, 0, 0, NULL,      5, 1);
+                INSERT INTO messages_crdt (id, timestamp, dataset, row, column, value) VALUES
+                    (1, '2026-06-01T00:00:00.000Z-0000-aaaaaaaaaaaaaaaa', 'transactions', 'plain',   'amount', x'00'),
+                    (2, '2026-06-01T00:00:01.000Z-0000-bbbbbbbbbbbbbbbb', 'transactions', 'c-first', 'amount', x'00'),
+                    (3, '2026-06-01T00:00:02.000Z-0000-aaaaaaaaaaaaaaaa', 'transactions', 'parent',  'notes',  x'00'),
+                    (4, '2026-06-01T00:00:03.000Z-0000-bbbbbbbbbbbbbbbb', 'categories',   'cat-fun', 'name',   x'00');
+            """)
+        }
+
+        let snapshot = try await db.fetchAllLiveTransactions(
+            remoteChangesAfter: 1,
+            localNode: "aaaaaaaaaaaaaaaa"
+        )
+
+        #expect(snapshot.transactions.map(\.id).sorted() == ["parent", "plain"])
+        #expect(snapshot.splitChildren.map(\.id) == ["c-first", "c-second"])
+        // Same portions the list reads, so History can caption the split.
+        #expect(snapshot.transactions.first { $0.id == "parent" }?.splitPortions == [
+            .init(categoryName: "Food", amount: -6000),
+            .init(categoryName: "Fun", amount: -4000),
+        ])
+        #expect(snapshot.messageID == 4)
+        // Only other nodes' transaction rows past the watermark.
+        #expect(snapshot.remoteRowIDs == ["c-first"])
+    }
+
     // MARK: - insertSplit atomicity
 
     private func transaction(
@@ -334,7 +372,7 @@ struct BudgetDatabaseSplitTests {
         Transaction(
             id: id,
             accountId: "acct-1",
-            date: 20260610,
+            date: 20_260_610,
             amount: amount,
             payeeId: payeeId,
             payeeName: nil,
@@ -377,7 +415,7 @@ struct BudgetDatabaseSplitTests {
         let parent = transaction(id: "parent", amount: -1000, payeeId: "payee-market", isParent: true, sortOrder: 100)
         let children = [
             transaction(id: "c-1", amount: -600, categoryId: "cat-food", parentId: "parent", sortOrder: 99),
-            transaction(id: "c-2", amount: -400, categoryId: "cat-fun", parentId: "parent", sortOrder: 98)
+            transaction(id: "c-2", amount: -400, categoryId: "cat-fun", parentId: "parent", sortOrder: 98),
         ]
         let crdtMessages = messages(for: [parent] + children)
 
@@ -387,9 +425,9 @@ struct BudgetDatabaseSplitTests {
         let queue = try DatabaseQueue(path: url.path)
         let rows = try await queue.read { conn in
             try SplitRow.fetchAll(conn, sql: """
-                SELECT id, isParent, isChild, parent_id, category, amount, sort_order
-                FROM transactions ORDER BY sort_order DESC
-                """)
+            SELECT id, isParent, isChild, parent_id, category, amount, sort_order
+            FROM transactions ORDER BY sort_order DESC
+            """)
         }
         #expect(rows.count == 3)
         #expect(rows[0].id == "parent")
@@ -427,8 +465,8 @@ struct BudgetDatabaseSplitTests {
 
         let queue = try DatabaseQueue(path: url.path)
         let counts = try await queue.read { conn in
-            (try Int.fetchOne(conn, sql: "SELECT COUNT(*) FROM transactions") ?? -1,
-             try Int.fetchOne(conn, sql: "SELECT COUNT(*) FROM messages_crdt") ?? -1)
+            try (Int.fetchOne(conn, sql: "SELECT COUNT(*) FROM transactions") ?? -1,
+                 Int.fetchOne(conn, sql: "SELECT COUNT(*) FROM messages_crdt") ?? -1)
         }
         #expect(counts == (0, 0))
     }

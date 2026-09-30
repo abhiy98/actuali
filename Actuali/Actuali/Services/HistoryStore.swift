@@ -1,5 +1,5 @@
-import Foundation
 import Combine
+import Foundation
 
 extension Transaction {
     /// Compares only stable transaction state returned by the normal fetch path.
@@ -7,20 +7,20 @@ extension Transaction {
     /// `sortOrder` normalization must not make a live row differ from history.
     func matchesLiveTransaction(_ transaction: Transaction) -> Bool {
         id == transaction.id &&
-        accountId == transaction.accountId &&
-        date == transaction.date &&
-        amount == transaction.amount &&
-        payeeId == transaction.payeeId &&
-        categoryId == transaction.categoryId &&
-        notes == transaction.notes &&
-        cleared == transaction.cleared &&
-        reconciled == transaction.reconciled &&
-        transferId == transaction.transferId &&
-        isParent == transaction.isParent &&
-        parentId == transaction.parentId &&
-        tombstone == transaction.tombstone &&
-        importedPayee == transaction.importedPayee &&
-        schedule == transaction.schedule
+            accountId == transaction.accountId &&
+            date == transaction.date &&
+            amount == transaction.amount &&
+            payeeId == transaction.payeeId &&
+            categoryId == transaction.categoryId &&
+            notes == transaction.notes &&
+            cleared == transaction.cleared &&
+            reconciled == transaction.reconciled &&
+            transferId == transaction.transferId &&
+            isParent == transaction.isParent &&
+            parentId == transaction.parentId &&
+            tombstone == transaction.tombstone &&
+            importedPayee == transaction.importedPayee &&
+            schedule == transaction.schedule
     }
 }
 
@@ -56,7 +56,7 @@ struct HistoryAction: Identifiable, Codable, Equatable {
             case .deleted: return String(localized: "Deleted transfer")
             }
         }
-        if after.contains(where: { $0.isParent }) || before.contains(where: { $0.isParent }) {
+        if after.contains(where: \.isParent) || before.contains(where: \.isParent) {
             switch kind {
             case .created: return String(localized: "Added split transaction")
             case .edited: return String(localized: "Edited split transaction")
@@ -89,6 +89,7 @@ final class HistoryStore: ObservableObject {
     }
 
     static var pendingUndo: PendingUndo?
+    static let maxSnapshotsPerAction = 500
 
     @Published private(set) var actions: [HistoryAction] = []
     @Published private(set) var errorMessage: String?
@@ -128,6 +129,18 @@ final class HistoryStore: ObservableObject {
         errorTitle = String(localized: "Couldn't Undo")
     }
 
+    /// Drop a budget's persisted actions. Actions live in UserDefaults keyed
+    /// by budget id, so they survive the budget's files being recreated from
+    /// scratch (demo reseed); clear them or the fresh budget opens with
+    /// history recorded against the previous copy.
+    func clearPersistedActions(budgetID: String) {
+        defaults.removeObject(forKey: key(budgetID))
+        guard loadedBudgetID == budgetID else { return }
+        actions = []
+        errorMessage = nil
+        errorTitle = String(localized: "Couldn't Undo")
+    }
+
     func recordSnapshots(
         budgetID: String,
         kind: HistoryActionKind,
@@ -135,6 +148,11 @@ final class HistoryStore: ObservableObject {
         after: [Transaction]
     ) {
         guard !Self.recordingSuppressed, !before.isEmpty || !after.isEmpty else { return }
+        // ponytail: bulk writes (locking an account's cleared rows) diff as one
+        // action over every row they touch. Undo restores one row per sync
+        // write and actions persist in UserDefaults, so past the old page
+        // size the action isn't recorded. Batch restores would lift the cap.
+        guard max(before.count, after.count) <= Self.maxSnapshotsPerAction else { return }
 
         if loadedBudgetID != budgetID {
             load(budgetID: budgetID)
@@ -208,8 +226,8 @@ final class HistoryStore: ObservableObject {
 
     func canUndo(_ action: HistoryAction) -> Bool {
         action.budgetID == loadedBudgetID &&
-        action.status == .applied &&
-        actions.first(where: { $0.status == .applied })?.id == action.id
+            action.status == .applied &&
+            actions.first(where: { $0.status == .applied })?.id == action.id
     }
 
     func clearError() {
@@ -222,16 +240,19 @@ final class HistoryStore: ObservableObject {
         errorMessage = nil
         errorTitle = String(localized: "Couldn't Undo")
 
-        var live = Dictionary(uniqueKeysWithValues: budgetStore.transactions.map { ($0.id, $0) })
-        let splitParentIDs = Set(
-            action.before.compactMap { $0.isParent ? $0.id : $0.parentId } +
-            action.after.compactMap { $0.isParent ? $0.id : $0.parentId }
-        )
-        for parentID in splitParentIDs {
-            for child in await budgetStore.fetchSplitChildren(parentId: parentID) {
-                live[child.id] = child
-            }
+        // Check against every live row: a row missing from the newest page
+        // in `budgetStore.transactions` is not deleted.
+        let snapshot: BudgetDatabase.LiveTransactionSnapshot
+        do {
+            snapshot = try await budgetStore.fetchAllLiveTransactions()
+        } catch {
+            errorMessage = error.localizedDescription
+            return
         }
+        let live = Dictionary(
+            (snapshot.transactions + snapshot.splitChildren).map { ($0.id, $0) },
+            uniquingKeysWith: { first, _ in first }
+        )
 
         let afterByID = Dictionary(uniqueKeysWithValues: action.after.map { ($0.id, $0) })
         for recordedAfter in action.after {

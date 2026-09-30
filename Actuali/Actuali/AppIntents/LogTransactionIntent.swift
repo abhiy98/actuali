@@ -15,9 +15,9 @@ struct LogTransactionIntent: AppIntent {
     @Parameter(title: LocalizedStringResource("Card or Account Hint"), default: "")
     var cardHint: String
 
-    // String, not Double: Wallet's amount coerces to 0 as a Number for some
-    // cards, but the text form carries the real value (issue #41). Parsed
-    // via AmountParser, which handles currency symbols and locale separators.
+    /// String, not Double: Wallet's amount coerces to 0 as a Number for some
+    /// cards, but the text form carries the real value (issue #41). Parsed
+    /// via AmountParser, which handles currency symbols and locale separators.
     @Parameter(title: LocalizedStringResource("Amount"))
     var amount: String
 
@@ -26,6 +26,10 @@ struct LogTransactionIntent: AppIntent {
 
     @Parameter(title: LocalizedStringResource("Notes"), default: "")
     var notes: String
+
+    /// Optional so existing shortcuts keep the payee-based auto-pick (#283).
+    @Parameter(title: LocalizedStringResource("Category"))
+    var category: CategoryEntity?
 
     @Parameter(title: LocalizedStringResource("Date"))
     var date: Date?
@@ -36,11 +40,11 @@ struct LogTransactionIntent: AppIntent {
     @Parameter(title: LocalizedStringResource("Cleared"), default: true)
     var cleared: Bool
 
-    // Siri speaks a returned dialog, but Shortcuts and Wallet automations render
-    // it as a card the user must dismiss with "Done" — which #143 turned into the
-    // normal outcome of a tap-to-pay automation. Nothing in AppIntents exposes the
-    // invocation surface, so the Siri App Shortcut opts in explicitly and every
-    // other caller stays silent; the success notification is the feedback there.
+    /// Siri speaks a returned dialog, but Shortcuts and Wallet automations render
+    /// it as a card the user must dismiss with "Done" — which #143 turned into the
+    /// normal outcome of a tap-to-pay automation. Nothing in AppIntents exposes the
+    /// invocation surface, so the Siri App Shortcut opts in explicitly and every
+    /// other caller stays silent; the success notification is the feedback there.
     @Parameter(title: LocalizedStringResource("Show Confirmation"), default: false)
     var showConfirmation: Bool
 
@@ -54,6 +58,7 @@ struct LogTransactionIntent: AppIntent {
         Summary("Log \(\.$amount) at \(\.$payee) in \(\.$account)") {
             \.$cardHint
             \.$notes
+            \.$category
             \.$date
             \.$isIncome
             \.$cleared
@@ -67,7 +72,9 @@ struct LogTransactionIntent: AppIntent {
     ) -> IntentResultContainer<Never, Never, Never, IntentDialog> {
         var result = IntentResultContainer<Never, Never, Never, IntentDialog>
             .result(dialog: IntentDialog(stringLiteral: dialogText))
-        if !showConfirmation { result.dialog = nil }
+        if !showConfirmation {
+            result.dialog = nil
+        }
         return result
     }
 
@@ -137,7 +144,9 @@ struct LogTransactionIntent: AppIntent {
                 rawMerchant: payee,
                 notes: trimmedNotes.isEmpty ? nil : trimmedNotes,
                 date: resolvedDate,
-                cleared: cleared
+                cleared: cleared,
+                // Off-budget accounts carry no category, matching the add form.
+                categoryId: activeAccount.offBudget ? nil : category?.id
             )
 
             // The row is safely on disk either way, but an unreachable server
@@ -182,9 +191,13 @@ struct LogTransactionIntent: AppIntent {
         let store = BudgetStore.shared
         await store.ensureBudgetReady()
         let amountCents = AmountParser.parse(amount).flatMap { Transaction.cents(fromDollars: $0) }
+        // The form marks a prefilled category as user-picked and would save a
+        // deleted one, so check it exists first.
+        let categoryId = await store.existingCategoryId(category?.id)
         await TransactionLogNotifier.notifyFailure(
             message: LogTransactionError.localizedString(
-                for: error, locale: .autoupdatingCurrent, bundle: .main),
+                for: error, locale: .autoupdatingCurrent, bundle: .main
+            ),
             payee: payee,
             amountCents: amountCents ?? 0,
             currencyCode: store.currencyCode,
@@ -195,6 +208,7 @@ struct LogTransactionIntent: AppIntent {
                 amountCents: amountCents,
                 date: date ?? Date(),
                 notes: notes.trimmingCharacters(in: .whitespacesAndNewlines),
+                categoryId: categoryId,
                 isIncome: isIncome,
                 cleared: cleared
             ),

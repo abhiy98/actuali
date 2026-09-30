@@ -14,6 +14,19 @@ struct AddTransactionView: View {
     private let onSaved: ((String?) throws -> Void)?
     private let saveOverride: ((BudgetStore.TransactionForm) async throws -> PendingImportApprover.SaveResult)?
     private let reviewRequirements: [PendingImportReviewRequirement]
+    /// Non-nil for the tab-hosted add flow, which gets a fresh focus request
+    /// each time the Add tab is selected. Presented add flows keep their
+    /// existing blank-form autofocus behavior.
+    private let autofocusAmount: Bool?
+
+    /// Width of the sign glyph beside the amount, scaled with the glyph's own
+    /// text style so it never clips at accessibility sizes. The same width is
+    /// reserved on the opposite side so the amount itself stays centered.
+    @ScaledMetric(relativeTo: .title2) private var amountSignWidth: CGFloat = 24
+    /// Floor for the content-sized amount field: keeps an empty field wide
+    /// enough to stay tappable and keep its placeholder visible at every
+    /// text size.
+    @ScaledMetric(relativeTo: .largeTitle) private var amountMinWidth: CGFloat = 88
 
     @State private var selectedAccountId: String
     @State private var amount: String
@@ -31,6 +44,7 @@ struct AddTransactionView: View {
     @State private var automaticCategoryPreview: BudgetStore.AutomaticCategoryPreview?
     @State private var nearbyPayees: [NearbyPayee] = []
     @State private var showPayeePicker = false
+    @State private var showCategoryPicker = false
     @State private var saveLocation = true
     @State private var splitLines: [BudgetStore.SplitLineForm] = []
     /// True while the edit form's "Remove Split" is toggled on an existing
@@ -52,6 +66,7 @@ struct AddTransactionView: View {
         categoryId: String? = nil,
         isIncome: Bool = false,
         cleared: Bool = false,
+        autofocusAmount: Bool? = nil,
         saveOverride: ((BudgetStore.TransactionForm) async throws -> PendingImportApprover.SaveResult)? = nil,
         onSaved: ((String?) throws -> Void)? = nil,
         reviewRequirements: [PendingImportReviewRequirement] = []
@@ -60,6 +75,7 @@ struct AddTransactionView: View {
         self.onSaved = onSaved
         self.saveOverride = saveOverride
         self.reviewRequirements = reviewRequirements
+        self.autofocusAmount = autofocusAmount
         _selectedAccountId = State(initialValue: accountId)
         _amount = State(initialValue: amountCents.map { String(format: "%.2f", Double(abs($0)) / 100.0) } ?? "")
         _txType = State(initialValue: isIncome ? .income : .expense)
@@ -82,6 +98,7 @@ struct AddTransactionView: View {
         self.onSaved = nil
         self.saveOverride = nil
         self.reviewRequirements = []
+        self.autofocusAmount = nil
 
         let cents = abs(editing.amount)
         let dollars = Double(cents) / 100.0
@@ -110,15 +127,32 @@ struct AddTransactionView: View {
         _cleared = State(initialValue: editing.cleared)
     }
 
-    private var isEditing: Bool { editing != nil }
-    private var isPendingImportReview: Bool { !reviewRequirements.isEmpty }
+    private var isEditing: Bool {
+        editing != nil
+    }
+
+    private var isPendingImportReview: Bool {
+        !reviewRequirements.isEmpty
+    }
+
     /// Presented flows (edit, account-detail "+", notification prefill) can
     /// close themselves; the tab-hosted add flow can't. Cancel, post-save
     /// behavior, and the header all branch on this.
-    private var canDismiss: Bool { isEditing || isPresented }
-    private var isTransfer: Bool { txType == .transfer }
-    private var isEditingSplitParent: Bool { editing?.isParent == true }
-    private var isEditingTransfer: Bool { editing?.transferId != nil }
+    private var canDismiss: Bool {
+        isEditing || isPresented
+    }
+
+    private var isTransfer: Bool {
+        txType == .transfer
+    }
+
+    private var isEditingSplitParent: Bool {
+        editing?.isParent == true
+    }
+
+    private var isEditingTransfer: Bool {
+        editing?.transferId != nil
+    }
 
     private struct AutomaticCategoryInput: Equatable {
         var accountId: String
@@ -160,35 +194,72 @@ struct AddTransactionView: View {
         guard let editing else { return false }
         return editing.transferId == nil && !editing.isParent && editing.parentId == nil
     }
-    private var isConvertingToTransfer: Bool { isTransfer && canConvertToTransfer }
 
-    /// A transfer leg takes a category only when it sits in an on-budget
-    /// account and the other side is off-budget — money leaving the budget
-    /// still needs one (Actual's rule). Tracks the live picker selections so
-    /// re-targeting the accounts shows/hides the row immediately.
-    private var editedTransferLegIsCategorizable: Bool {
-        guard let editing, isTransfer else { return false }
-        // The edited row's own account is the one in the account picker,
-        // except on an existing transfer opened from its receiving leg —
-        // there the form shows the pair as From/To and the opened row is To.
-        let openedOnDestinationLeg = editing.transferId != nil && editing.amount >= 0
-        let legAccountId = openedOnDestinationLeg ? transferToAccountId : selectedAccountId
-        let otherAccountId = openedOnDestinationLeg ? selectedAccountId : transferToAccountId
-        guard let leg = budgetStore.accounts.first(where: { $0.id == legAccountId }),
-              let other = budgetStore.accounts.first(where: { $0.id == otherAccountId }) else {
-            return false
-        }
-        return !leg.offBudget && other.offBudget
+    private var isConvertingToTransfer: Bool {
+        isTransfer && canConvertToTransfer
     }
-    private var isSplitting: Bool { !splitLines.isEmpty && !unsplitRequested }
+
+    /// Whether the transfer being entered takes a category. Tracks the live
+    /// picker selections so re-targeting the accounts shows/hides the row
+    /// immediately.
+    private var transferTakesCategory: Bool {
+        guard isTransfer else { return false }
+        let offBudgetIds = budgetStore.offBudgetAccountIds
+        func takes(leg: String?, partner: String?) -> Bool {
+            BudgetStore.transferLegTakesCategory(leg: leg, partner: partner, offBudgetAccountIds: offBudgetIds)
+        }
+        guard let editing else {
+            // `createTransfer` puts it on whichever leg is on-budget.
+            return takes(leg: selectedAccountId, partner: transferToAccountId)
+                || takes(leg: transferToAccountId, partner: selectedAccountId)
+        }
+        // An edit writes the form's category to the opened row alone. That
+        // row's account is the one in the account picker, except on an
+        // existing transfer opened from its receiving leg — there the form
+        // shows the pair as From/To and the opened row is To.
+        return editing.transferId != nil && editing.amount >= 0
+            ? takes(leg: transferToAccountId, partner: selectedAccountId)
+            : takes(leg: selectedAccountId, partner: transferToAccountId)
+    }
+
+    /// Whether the single-category row belongs on the form. A hidden pick is
+    /// kept (so it reappears with the row) but never saved: every save path
+    /// drops a category the row hides (GH #561).
+    private var showsCategoryRow: Bool {
+        isTransfer ? transferTakesCategory : showsStandardCategoryFields
+    }
+
+    private var isSplitting: Bool {
+        !splitLines.isEmpty && !unsplitRequested
+    }
+
+    /// Whether the split entry section is on screen. Shared by the body and
+    /// the save gate so the two can't disagree about when split rules apply.
+    private var showsSplitEntry: Bool {
+        isSplitting && !isTransfer && showsStandardCategoryFields
+    }
 
     /// Whether the form can offer the split option: a plain transaction in
     /// either flow, or an existing parent mid-"Remove Split" (as an undo).
     /// Transfers are excluded — they pair two accounts through `transferId`
     /// and splitting would orphan the partner leg (the store refuses it), so
-    /// the button stays hidden rather than failing on save.
+    /// the button stays hidden rather than failing on save. Gated on the live
+    /// type toggle, which also covers a saved transfer (its type is locked to
+    /// Transfer), so switching a new transaction to Transfer hides it (GH #556).
     private var canSplitIntoCategories: Bool {
-        editing?.transferId == nil && (!isEditingSplitParent || unsplitRequested)
+        Self.canSplitIntoCategories(
+            isTransfer: isTransfer,
+            isEditingSplitParent: isEditingSplitParent,
+            unsplitRequested: unsplitRequested
+        )
+    }
+
+    nonisolated static func canSplitIntoCategories(
+        isTransfer: Bool,
+        isEditingSplitParent: Bool,
+        unsplitRequested: Bool
+    ) -> Bool {
+        !isTransfer && (!isEditingSplitParent || unsplitRequested)
     }
 
     /// Cents still unassigned across the split lines, nil while the total
@@ -212,7 +283,9 @@ struct AddTransactionView: View {
         budgetStore.accounts
             .filter { !$0.closed }
             .sorted { lhs, rhs in
-                if lhs.offBudget != rhs.offBudget { return !lhs.offBudget }
+                if lhs.offBudget != rhs.offBudget {
+                    return !lhs.offBudget
+                }
                 return lhs.sortOrder < rhs.sortOrder
             }
     }
@@ -306,7 +379,8 @@ struct AddTransactionView: View {
                 return
             }
             nearbyPayees = await budgetStore.fetchNearbyPayees(
-                latitude: position.latitude, longitude: position.longitude)
+                latitude: position.latitude, longitude: position.longitude
+            )
         }
     }
 
@@ -333,40 +407,81 @@ struct AddTransactionView: View {
         return String(localized: AddTransactionLocalization.none, locale: locale)
     }
 
+    /// A button rather than a NavigationLink: the keyboard has to go down
+    /// before the push starts, and a List row's link gives no hook for that.
+    private var categoryRow: some View {
+        Button {
+            dismissKeyboard()
+            showCategoryPicker = true
+        } label: {
+            HStack {
+                Text("Category")
+                Spacer()
+                Text(selectedCategoryName)
+                    .foregroundStyle(.secondary)
+                Image(systemName: "chevron.right")
+                    .font(.footnote.weight(.semibold))
+                    .foregroundStyle(.tertiary)
+                    .accessibilityHidden(true)
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityIdentifier("addTransaction.category")
+    }
+
     var body: some View {
         NavigationStack {
             Form {
                 Section {
-                    HStack {
-                        Picker("Type", selection: $txType) {
-                            Text("Expense").tag(TransactionType.expense)
-                            Text("Income").tag(TransactionType.income)
-                            if !isPendingImportReview && (!isEditing || isEditingTransfer || canConvertToTransfer) {
-                                Text("Transfer").tag(TransactionType.transfer)
-                            }
+                    // Full-bleed: zeroed row insets let the segmented control
+                    // span the row edge to edge instead of negative padding
+                    // that assumes the default 16pt inset.
+                    Picker("Type", selection: $txType) {
+                        Text("Expense").tag(TransactionType.expense)
+                        Text("Income").tag(TransactionType.income)
+                        if !isPendingImportReview, !isEditing || isEditingTransfer || canConvertToTransfer {
+                            Text("Transfer").tag(TransactionType.transfer)
                         }
-                        .pickerStyle(.segmented)
-                        // A split parent's sign is the children's; flipping
-                        // it would have to flip every line, so it stays fixed.
-                        // A transfer stays a transfer: converting one back
-                        // would orphan the partner leg (the store refuses it).
-                        .disabled(isEditingSplitParent || isEditingTransfer)
                     }
+                    .pickerStyle(.segmented)
+                    .listRowInsets(EdgeInsets(top: 8, leading: 0, bottom: 8, trailing: 0))
+                    // A split parent's sign is the children's; flipping
+                    // it would have to flip every line, so it stays fixed.
+                    // A transfer stays a transfer: converting one back
+                    // would orphan the partner leg (the store refuses it).
+                    .disabled(isEditingSplitParent || isEditingTransfer)
 
-                    HStack {
+                    // The amount is the first thing entered in a fresh form,
+                    // so the add flow opens with the keyboard ready. Edits and
+                    // prefilled amounts already have one and start with the
+                    // keyboard down. The field is fixed to its text width, so
+                    // the sign hugs it; an equal spacer on the far side keeps
+                    // the amount itself on the row's center line.
+                    HStack(alignment: .center, spacing: 12) {
                         Text(amountSignSymbol)
+                            .font(.title2.weight(.semibold))
                             .foregroundStyle(amountSignColor)
-                        // The amount is the first thing entered in a fresh
-                        // form, so the add flow opens with the keyboard ready.
-                        // Edits and prefilled amounts already have one and
-                        // start with the keyboard down.
+                            .frame(width: amountSignWidth, alignment: .trailing)
                         AmountInputField(
                             text: $amount,
                             conventionalAmountEntry: budgetStore.conventionalAmountEntry,
-                            autofocus: !isEditing && amount.isEmpty
+                            alignment: .center,
+                            textStyle: .extraLargeTitle,
+                            weight: .bold,
+                            autofocus: autofocusAmount ?? (!isEditing && amount.isEmpty)
                         )
+                        .fixedSize(horizontal: true, vertical: false)
+                        .frame(minWidth: amountMinWidth)
+                        Color.clear
+                            .frame(width: amountSignWidth, height: 1)
+                            .accessibilityHidden(true)
                     }
+                    .frame(maxWidth: .infinity, alignment: .center)
+                    .listRowInsets(EdgeInsets(top: 10, leading: 16, bottom: 10, trailing: 16))
                 }
+                .listRowBackground(Color.clear)
+                .listRowSeparator(.hidden, edges: .all)
 
                 Section {
                     Picker(accountPickerLabel, selection: $selectedAccountId) {
@@ -387,25 +502,12 @@ struct AddTransactionView: View {
                                 Text(account.name).tag(String?.some(account.id))
                             }
                         }
-                        if editedTransferLegIsCategorizable {
-                            NavigationLink {
-                                CategoryPickerView(selectedCategoryId: $selectedCategoryId) {
-                                    userPickedCategory = true
-                                }
-                            } label: {
-                                HStack {
-                                    Text("Category")
-                                    Spacer()
-                                    Text(selectedCategoryName)
-                                        .foregroundStyle(.secondary)
-                                }
-                            }
-                        }
                     }
 
                     if !isTransfer {
                         Button {
                             loadNearbyPayees()
+                            dismissKeyboard()
                             showPayeePicker = true
                         } label: {
                             HStack {
@@ -445,7 +547,7 @@ struct AddTransactionView: View {
                         }
                     }
 
-                    if isEditingSplitParent && !isSplitting && !unsplitRequested {
+                    if isEditingSplitParent, !isSplitting, !unsplitRequested {
                         // Placeholder while the children load into the
                         // editable split lines below.
                         HStack {
@@ -454,20 +556,9 @@ struct AddTransactionView: View {
                             Text("Split")
                                 .foregroundStyle(.secondary)
                         }
-                    } else if showsStandardCategoryFields && !isSplitting {
-                        NavigationLink {
-                            CategoryPickerView(selectedCategoryId: $selectedCategoryId) {
-                                userPickedCategory = true
-                            }
-                        } label: {
-                            HStack {
-                                Text("Category")
-                                Spacer()
-                                Text(selectedCategoryName)
-                                    .foregroundStyle(.secondary)
-                            }
-                        }
-                            if canSplitIntoCategories && !isPendingImportReview {
+                    } else if showsCategoryRow, !isSplitting {
+                        categoryRow
+                        if canSplitIntoCategories, !isPendingImportReview {
                             Button {
                                 startSplit()
                             } label: {
@@ -476,33 +567,42 @@ struct AddTransactionView: View {
                         }
                     }
 
+                    // Split lines grow the same pill in place, right where the
+                    // category row was, instead of opening a section of their own.
+                    if showsSplitEntry {
+                        splitEntryRows
+                        // Right under the lines it counts, so a disabled Save
+                        // button is never a mystery.
+                        if let remaining = splitRemainingCents, remaining != 0 {
+                            Text("\(budgetStore.formatCurrency(remaining)) left to assign")
+                                .foregroundStyle(.red)
+                        } else if splitRemainingCents == 0, hasBlankSplitLine {
+                            // Nothing left to assign but a line is still blank.
+                            Text("Fill in or remove the empty line")
+                                .foregroundStyle(.red)
+                        }
+                    }
+
                     DatePicker("Date", selection: $date, displayedComponents: .date)
-                }
 
-                if isSplitting && !isTransfer && showsStandardCategoryFields {
-                    splitEntrySection
-                }
-
-                Section {
                     // One line while the note is short — an empty three-line
                     // box only pushes Cleared and the save button off screen —
                     // growing as the text needs it, up to six.
                     TextField("Notes", text: $notes, axis: .vertical)
                         .lineLimit(1...6)
+                    TagSuggestionBar(text: $notes, availableTags: budgetStore.tags)
                     // Links in the note stay openable while the text is a
                     // TextField (GH #190) — this form doubles as the only
                     // full view of a transaction's note.
                     NoteLinkRows(text: notes)
-                }
 
-                Section {
                     Toggle("Cleared", isOn: $cleared)
                     // Only the paths that record locations (adds and split
                     // edits) get the per-save opt-out; standard edits never
                     // record, so the toggle would be a no-op there.
-                    if (!isEditing || isEditingSplitParent) && !isTransfer
-                        && budgetStore.payeeLocationWritesEnabled
-                        && budgetStore.recordPayeeLocations {
+                    if !isEditing || isEditingSplitParent, !isTransfer,
+                       budgetStore.payeeLocationWritesEnabled,
+                       budgetStore.recordPayeeLocations {
                         Toggle("Save Location", isOn: $saveLocation)
                     }
                 }
@@ -579,6 +679,14 @@ struct AddTransactionView: View {
             .contentMargins(.top, canDismiss ? nil : 8, for: .scrollContent)
             // Presented flows keep their sheet titles; the tab root shows no
             // header, matching the Accounts and Budget tabs.
+            .navigationDestination(isPresented: $showCategoryPicker) {
+                CategoryPickerView(
+                    selectedCategoryId: $selectedCategoryId,
+                    autofocusSearch: true
+                ) {
+                    userPickedCategory = true
+                }
+            }
             .navigationTitle(canDismiss ? (isEditing ? "Edit Transaction" : "Add Transaction") : "")
             .navigationBarTitleDisplayMode(canDismiss ? .automatic : .inline)
             .listSectionSpacing(.compact)
@@ -642,75 +750,62 @@ struct AddTransactionView: View {
         }
     }
 
-    /// Editable split lines for the add flow: one category + amount per
-    /// line, with the unassigned remainder in the footer.
-    private var splitEntrySection: some View {
-        Section {
-            ForEach($splitLines) { $line in
-                SplitLineRow(
-                    line: $line,
-                    accountId: selectedAccountId,
-                    txType: txType,
-                    remainingCents: splitRemainingCents,
-                    nearbyPayees: $nearbyPayees,
-                    onOpenPayeePicker: loadNearbyPayees,
-                    onDeleteNearby: deleteNearbySuggestion
-                )
-            }
-            .onDelete { offsets in
-                if isEditingSplitParent {
-                    // Swiping away every line on an existing parent is the
-                    // same intent as "Remove Split": switch to
-                    // single-transaction mode and seed the collapse category
-                    // from a removed line (the parent carries none). The
-                    // lines are gone from memory, so undoing via the split
-                    // button reloads them from the database.
-                    let removed = offsets.compactMap { splitLines[$0] }
-                    splitLines.remove(atOffsets: offsets)
-                    if splitLines.isEmpty {
-                        unsplitRequested = true
-                        if let category = removed.first(where: { $0.categoryId != nil })?.categoryId {
-                            selectedCategoryId = category
-                        }
-                    }
-                } else {
-                    splitLines.remove(atOffsets: offsets)
-                }
-            }
-            Button {
-                splitLines.append(.init())
-            } label: {
-                Label("Add Line", systemImage: "plus")
-            }
-            // Tapping "Remove Split" on an existing parent switches the form
-            // to single-transaction mode: keep the lines in memory for an
-            // instant undo and seed the collapse category from the first
-            // line that has one (the parent itself carries none). In the add
-            // flow it just clears the lines, as before.
-            Button(role: .destructive) {
-                if isEditingSplitParent {
+    /// Editable split lines, rendered inline in the main section so the pill
+    /// simply grows: one category + amount per line.
+    @ViewBuilder
+    private var splitEntryRows: some View {
+        ForEach($splitLines) { $line in
+            SplitLineRow(
+                line: $line,
+                accountId: selectedAccountId,
+                txType: txType,
+                remainingCents: splitRemainingCents,
+                nearbyPayees: $nearbyPayees,
+                onOpenPayeePicker: loadNearbyPayees,
+                onDeleteNearby: deleteNearbySuggestion
+            )
+        }
+        .onDelete { offsets in
+            if isEditingSplitParent {
+                // Swiping away every line on an existing parent is the
+                // same intent as "Remove Split": switch to
+                // single-transaction mode and seed the collapse category
+                // from a removed line (the parent carries none). The
+                // lines are gone from memory, so undoing via the split
+                // button reloads them from the database.
+                let removed = offsets.compactMap { splitLines[$0] }
+                splitLines.remove(atOffsets: offsets)
+                if splitLines.isEmpty {
                     unsplitRequested = true
-                    if let first = splitLines.first(where: { $0.categoryId != nil }) {
-                        selectedCategoryId = first.categoryId
+                    if let category = removed.first(where: { $0.categoryId != nil })?.categoryId {
+                        selectedCategoryId = category
                     }
-                } else {
-                    splitLines = []
                 }
-            } label: {
-                Text("Remove Split")
+            } else {
+                splitLines.remove(atOffsets: offsets)
             }
-        } header: {
-            Text("Split")
-        } footer: {
-            if let remaining = splitRemainingCents, remaining != 0 {
-                Text("\(budgetStore.formatCurrency(remaining)) left to assign")
-                    .foregroundStyle(.red)
-            } else if splitRemainingCents == 0 && hasBlankSplitLine {
-                // Nothing left to assign but a line is still blank — say why
-                // Save stays disabled instead of leaving it a mystery.
-                Text("Fill in or remove the empty line")
-                    .foregroundStyle(.red)
+        }
+        Button {
+            splitLines.append(.init())
+        } label: {
+            Label("Add Line", systemImage: "plus")
+        }
+        // Tapping "Remove Split" on an existing parent switches the form
+        // to single-transaction mode: keep the lines in memory for an
+        // instant undo and seed the collapse category from the first
+        // line that has one (the parent itself carries none). In the add
+        // flow it just clears the lines, as before.
+        Button(role: .destructive) {
+            if isEditingSplitParent {
+                unsplitRequested = true
+                if let first = splitLines.first(where: { $0.categoryId != nil }) {
+                    selectedCategoryId = first.categoryId
+                }
+            } else {
+                splitLines = []
             }
+        } label: {
+            Text("Remove Split")
         }
     }
 
@@ -734,7 +829,7 @@ struct AddTransactionView: View {
         if isEditing {
             splitLines = [
                 .init(categoryId: selectedCategoryId, amount: amount),
-                .init()
+                .init(),
             ]
         } else {
             splitLines = [.init(), .init()]
@@ -743,17 +838,17 @@ struct AddTransactionView: View {
 
     private var amountSignSymbol: String {
         switch txType {
-        case .expense: return "-"
-        case .income: return "+"
-        case .transfer: return "→"
+        case .expense: "-"
+        case .income: "+"
+        case .transfer: "→"
         }
     }
 
     private var amountSignColor: Color {
         switch txType {
-        case .expense: return .red
-        case .income: return .green
-        case .transfer: return .blue
+        case .expense: .red
+        case .income: .green
+        case .transfer: .blue
         }
     }
 
@@ -767,14 +862,22 @@ struct AddTransactionView: View {
     }
 
     private var saveDisabled: Bool {
-        if isLoading || amount.isEmpty { return true }
-        if !reviewRequirements.isEmpty
-            && !confirmedReviewRequirements.isSuperset(of: reviewRequirements) { return true }
-        if isTransfer && transferToAccountId == nil { return true }
+        if isLoading || amount.isEmpty {
+            return true
+        }
+        if !reviewRequirements.isEmpty,
+           !confirmedReviewRequirements.isSuperset(of: reviewRequirements) {
+            return true
+        }
+        if isTransfer, transferToAccountId == nil {
+            return true
+        }
         // A blank line reads as zero for the remainder display, but the store
         // rejects zero-amount children — keep save blocked until it's filled.
-        if isSplitting && !isTransfer && showsStandardCategoryFields
-            && (splitRemainingCents != 0 || hasBlankSplitLine) { return true }
+        if showsSplitEntry,
+           splitRemainingCents != 0 || hasBlankSplitLine {
+            return true
+        }
         return false
     }
 
@@ -811,7 +914,8 @@ struct AddTransactionView: View {
             }
         } catch {
             errorMessage = PendingImportApprover.localizedErrorMessage(
-                for: error, locale: locale)
+                for: error, locale: locale
+            )
         }
     }
 
@@ -856,13 +960,18 @@ struct AddTransactionView: View {
         // keep the old keyboard up.
         dismissKeyboard()
     }
+}
 
-    private func dismissKeyboard() {
-        UIApplication.shared.sendAction(
-            #selector(UIResponder.resignFirstResponder),
-            to: nil, from: nil, for: nil
-        )
-    }
+/// Resign whatever field is focused. Pickers call this before they open: UIKit
+/// remembers the first responder across a sheet or push and restores it on the
+/// way back, which would bring the amount keypad up again with its text
+/// selected (GH #558).
+@MainActor
+private func dismissKeyboard() {
+    UIApplication.shared.sendAction(
+        #selector(UIResponder.resignFirstResponder),
+        to: nil, from: nil, for: nil
+    )
 }
 
 /// Math for the split entry section, kept off the view for testability.
@@ -929,12 +1038,14 @@ private struct SplitLineRow: View {
         VStack(alignment: .leading, spacing: 6) {
             HStack {
                 Button {
+                    dismissKeyboard()
                     showCategoryPicker = true
                 } label: {
                     Text(categoryName)
                         .foregroundStyle(line.categoryId == nil ? Color.secondary : Color.primary)
                 }
                 .buttonStyle(.borderless)
+                .accessibilityIdentifier("addTransaction.splitLine.category")
                 Spacer()
                 // Every line carries a sign like the total's, so direction is
                 // never implicit; tapping it flips the line — how a refund
@@ -960,7 +1071,7 @@ private struct SplitLineRow: View {
                     conventionalAmountEntry: budgetStore.conventionalAmountEntry,
                     onToggleSign: { line.isOpposite.toggle() }
                 )
-                    .frame(width: 110)
+                .frame(width: 110)
             }
             // No fill offer on a flipped line: the remainder is stated in the
             // transaction's direction, and filling it here would double the
@@ -980,16 +1091,18 @@ private struct SplitLineRow: View {
             // Empty payee inherits the transaction's payee.
             Button {
                 onOpenPayeePicker()
+                dismissKeyboard()
                 showPayeePicker = true
             } label: {
                 Text(line.payeeName.isEmpty
-                     ? String(localized: AddTransactionLocalization.optionalPayee, locale: locale)
-                     : line.payeeName)
+                    ? String(localized: AddTransactionLocalization.optionalPayee, locale: locale)
+                    : line.payeeName)
                     .foregroundStyle(line.payeeName.isEmpty ? Color.secondary : Color.primary)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
+            .accessibilityIdentifier("addTransaction.splitLine.payee")
             .font(.subheadline)
             .sheet(isPresented: $showPayeePicker) {
                 PayeePickerView(
@@ -999,7 +1112,8 @@ private struct SplitLineRow: View {
                     onSelect: { payee in
                         line.payeeId = payee.id
                         line.payeeName = PayeePickerView.displayName(
-                            for: payee, accounts: budgetStore.accounts)
+                            for: payee, accounts: budgetStore.accounts
+                        )
                         showPayeePicker = false
                     },
                     onCommit: { name in
@@ -1017,12 +1131,16 @@ private struct SplitLineRow: View {
             }
             TextField(String(localized: AddTransactionLocalization.optionalNotes, locale: locale), text: $line.notes)
                 .font(.subheadline)
+            TagSuggestionBar(text: $line.notes, availableTags: budgetStore.tags)
             NoteLinkRows(text: line.notes)
                 .font(.subheadline)
         }
         .sheet(isPresented: $showCategoryPicker) {
             NavigationStack {
-                CategoryPickerView(selectedCategoryId: $line.categoryId)
+                CategoryPickerView(
+                    selectedCategoryId: $line.categoryId,
+                    autofocusSearch: true
+                )
             }
         }
     }
@@ -1047,6 +1165,8 @@ private struct SplitLineRow: View {
 /// lives outside the field (a split line's direction flip) and the text stays unsigned.
 /// Neither set means sign is handled elsewhere entirely (e.g. the expense/income toggle).
 ///
+/// `textStyle` picks the Dynamic Type text style the font scales from.
+///
 /// The toolbar also carries +, −, × and ÷ for quick math: typing 12.50, then
 /// +, then 6.00 shows "12.50 + 6.00" in the field and collapses to "18.50"
 /// when editing ends. Evaluation is strictly left-to-right with no operator
@@ -1061,6 +1181,7 @@ struct AmountInputField: UIViewRepresentable {
     /// of shifting into cents.
     var conventionalAmountEntry = false
     var alignment: NSTextAlignment = .natural
+    var textStyle: UIFont.TextStyle = .body
     var allowsNegative = false
     var weight: UIFont.Weight = .regular
     /// Bring up the keyboard as soon as the field lands on screen. For
@@ -1068,7 +1189,7 @@ struct AmountInputField: UIViewRepresentable {
     var autofocus = false
     /// Shows the ± toolbar button and delegates it here instead of signing
     /// the text — for callers whose sign is separate state.
-    var onToggleSign: (() -> Void)? = nil
+    var onToggleSign: (() -> Void)?
 
     /// becomeFirstResponder is a no-op until the view joins a window, and
     /// during a sheet presentation that happens well after makeUIView —
@@ -1076,6 +1197,16 @@ struct AmountInputField: UIViewRepresentable {
     final class AutofocusTextField: UITextField {
         var wantsAutofocus = false
         private var hasAutofocused = false
+
+        func updateAutofocus(_ wants: Bool) {
+            guard wants != wantsAutofocus else { return }
+            wantsAutofocus = wants
+            guard wants else { return }
+            hasAutofocused = false
+            guard window != nil else { return }
+            hasAutofocused = true
+            becomeFirstResponder()
+        }
 
         override func didMoveToWindow() {
             super.didMoveToWindow()
@@ -1096,11 +1227,11 @@ struct AmountInputField: UIViewRepresentable {
         field.delegate = context.coordinator
         field.text = text
         if weight == .regular {
-            field.font = .preferredFont(forTextStyle: .body)
+            field.font = .preferredFont(forTextStyle: textStyle)
         } else {
-            // Weighted variant of the body style so Dynamic Type still scales.
+            // Weighted variant of the selected text style so Dynamic Type still scales.
             let descriptor = UIFontDescriptor
-                .preferredFontDescriptor(withTextStyle: .body)
+                .preferredFontDescriptor(withTextStyle: textStyle)
                 .addingAttributes([.traits: [UIFontDescriptor.TraitKey.weight: weight]])
             field.font = UIFont(descriptor: descriptor, size: 0)
         }
@@ -1131,7 +1262,11 @@ struct AmountInputField: UIViewRepresentable {
         }
         items.append(UIBarButtonItem(barButtonSystemItem: .flexibleSpace, target: nil, action: nil))
         // `.prominent` is iOS 26+; `.done` is the pre-26 equivalent emphasis.
-        let doneStyle: UIBarButtonItem.Style = if #available(iOS 26, *) { .prominent } else { .done }
+        let doneStyle: UIBarButtonItem.Style = if #available(iOS 26, *) {
+            .prominent
+        } else {
+            .done
+        }
         items.append(UIBarButtonItem(
             title: "Done", style: doneStyle,
             target: field, action: #selector(UIResponder.resignFirstResponder)
@@ -1158,6 +1293,7 @@ struct AmountInputField: UIViewRepresentable {
     }
 
     func updateUIView(_ uiView: UITextField, context: Context) {
+        (uiView as? AutofocusTextField)?.updateAutofocus(autofocus)
         let formatChanged = context.coordinator.numberFormat != budgetStore.numberFormat
         context.coordinator.numberFormat = budgetStore.numberFormat
         context.coordinator.parent = self
@@ -1193,39 +1329,39 @@ struct AmountInputField: UIViewRepresentable {
 
             var symbolName: String {
                 switch self {
-                case .add: return "plus"
-                case .subtract: return "minus"
-                case .multiply: return "multiply"
-                case .divide: return "divide"
+                case .add: "plus"
+                case .subtract: "minus"
+                case .multiply: "multiply"
+                case .divide: "divide"
                 }
             }
 
             var accessibilityLabel: String {
                 switch self {
-                case .add: return String(localized: "Add")
-                case .subtract: return String(localized: "Subtract")
-                case .multiply: return String(localized: "Multiply")
-                case .divide: return String(localized: "Divide")
+                case .add: String(localized: "Add")
+                case .subtract: String(localized: "Subtract")
+                case .multiply: String(localized: "Multiply")
+                case .divide: String(localized: "Divide")
                 }
             }
 
             var selector: Selector {
                 switch self {
-                case .add: return #selector(Coordinator.addTapped)
-                case .subtract: return #selector(Coordinator.subtractTapped)
-                case .multiply: return #selector(Coordinator.multiplyTapped)
-                case .divide: return #selector(Coordinator.divideTapped)
+                case .add: #selector(Coordinator.addTapped)
+                case .subtract: #selector(Coordinator.subtractTapped)
+                case .multiply: #selector(Coordinator.multiplyTapped)
+                case .divide: #selector(Coordinator.divideTapped)
                 }
             }
 
             func apply(_ lhs: Double, _ rhs: Double) -> Double {
                 switch self {
-                case .add: return lhs + rhs
-                case .subtract: return lhs - rhs
-                case .multiply: return lhs * rhs
+                case .add: lhs + rhs
+                case .subtract: lhs - rhs
+                case .multiply: lhs * rhs
                 // Dividing by zero has no sensible amount to show, so the
                 // operator is dropped and the running total stands.
-                case .divide: return rhs == 0 ? lhs : lhs / rhs
+                case .divide: rhs == 0 ? lhs : lhs / rhs
                 }
             }
         }
@@ -1308,7 +1444,7 @@ struct AmountInputField: UIViewRepresentable {
                     string,
                     numberFormat: numberFormat
                 ) ?? AmountParser.parse(string),
-                Transaction.cents(fromDollars: pastedValue) != nil else {
+                    Transaction.cents(fromDollars: pastedValue) != nil else {
                     return false
                 }
 
@@ -1351,10 +1487,21 @@ struct AmountInputField: UIViewRepresentable {
             }
         }
 
-        @objc func addTapped() { pushOperator(.add) }
-        @objc func subtractTapped() { pushOperator(.subtract) }
-        @objc func multiplyTapped() { pushOperator(.multiply) }
-        @objc func divideTapped() { pushOperator(.divide) }
+        @objc func addTapped() {
+            pushOperator(.add)
+        }
+
+        @objc func subtractTapped() {
+            pushOperator(.subtract)
+        }
+
+        @objc func multiplyTapped() {
+            pushOperator(.multiply)
+        }
+
+        @objc func divideTapped() {
+            pushOperator(.divide)
+        }
 
         /// Folds the operand just typed into the running total and arms the
         /// next operator. Tapping a second operator without typing anything
@@ -1482,7 +1629,7 @@ struct AmountInputField: UIViewRepresentable {
         /// front of it.
         private func computeOperandDisplay() -> String {
             let sign = isNegative ? "-" : ""
-            if !hasDecimalPoint && integerDigits.isEmpty {
+            if !hasDecimalPoint, integerDigits.isEmpty {
                 // A bare "-" so a sign toggled before any digits stays visible.
                 return sign
             }
@@ -1557,10 +1704,15 @@ struct AmountInputField: UIViewRepresentable {
         /// must not publish state while SwiftUI is updating the view hierarchy.
         fileprivate func renderDisplay(to textField: UITextField) {
             textField.text = computeFieldText()
+            // The display can grow or shrink without the binding changing
+            // (arming an operator shows "12.50 + " while the binding still
+            // reads 12.50), so a field sized to its text must be told to
+            // re-measure rather than wait for a SwiftUI update.
+            textField.invalidateIntrinsicContentSize()
         }
 
         fileprivate func applyDisplay(to textField: UITextField) {
-            textField.text = computeFieldText()
+            renderDisplay(to: textField)
             let bound = computeBoundText()
             lastPublishedText = bound
             if parent.text != bound {
@@ -1596,8 +1748,10 @@ struct CategoryPickerView: View {
     @EnvironmentObject private var budgetStore: BudgetStore
     @Environment(\.dismiss) private var dismiss
     @Binding var selectedCategoryId: String?
-    var onPick: (() -> Void)? = nil
+    var autofocusSearch = false
+    var onPick: (() -> Void)?
     @State private var searchText = ""
+    @State private var searchFocused = false
 
     var body: some View {
         List {
@@ -1643,7 +1797,20 @@ struct CategoryPickerView: View {
         }
         .navigationTitle("Category")
         .navigationBarTitleDisplayMode(.inline)
-        .searchable(text: $searchText, placement: .navigationBarDrawer(displayMode: .always), prompt: "Search categories")
+        .safeAreaInset(edge: .top, spacing: 0) {
+            PickerSearchBar(text: $searchText, clearButtonIdentifier: "categoryPicker.clearSearch") {
+                CategorySearchField(text: $searchText, isFocused: $searchFocused)
+                    .frame(height: 36)
+            }
+        }
+        // The navigation transition must settle before UIKit can claim the
+        // first responder for this destination.
+        .task {
+            guard autofocusSearch else { return }
+            try? await Task.sleep(for: .milliseconds(250))
+            guard !Task.isCancelled else { return }
+            searchFocused = true
+        }
     }
 
     private var filteredGroups: [CategoryGroup] {
@@ -1655,12 +1822,85 @@ struct CategoryPickerView: View {
             let matches = group.categories.filter { category in
                 !category.hidden &&
                     (category.name.localizedCaseInsensitiveContains(trimmed) ||
-                     group.name.localizedCaseInsensitiveContains(trimmed))
+                        group.name.localizedCaseInsensitiveContains(trimmed))
             }
             guard !matches.isEmpty else { return nil }
             var copy = group
             copy.categories = matches
             return copy
+        }
+    }
+}
+
+/// The native `.searchFocused` path did not present the keyboard for this
+/// navigation destination on the deployment-floor simulator, so this field
+/// owns the first-responder request directly.
+private struct CategorySearchField: UIViewRepresentable {
+    @Binding var text: String
+    @Binding var isFocused: Bool
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(self)
+    }
+
+    func makeUIView(context: Context) -> AmountInputField.AutofocusTextField {
+        let field = AmountInputField.AutofocusTextField()
+        field.placeholder = String(localized: "Search categories")
+        field.accessibilityIdentifier = "categoryPicker.search"
+        field.autocapitalizationType = .words
+        field.autocorrectionType = .no
+        field.returnKeyType = .done
+        field.delegate = context.coordinator
+        field.addTarget(
+            context.coordinator,
+            action: #selector(Coordinator.textChanged),
+            for: .editingChanged
+        )
+        field.wantsAutofocus = isFocused
+        return field
+    }
+
+    func updateUIView(_ uiView: AmountInputField.AutofocusTextField, context: Context) {
+        context.coordinator.parent = self
+        if uiView.text != text {
+            uiView.text = text
+        }
+        uiView.wantsAutofocus = isFocused
+        if isFocused, uiView.window != nil, !uiView.isFirstResponder {
+            DispatchQueue.main.async {
+                guard uiView.window != nil, !uiView.isFirstResponder else { return }
+                uiView.becomeFirstResponder()
+            }
+        } else if !isFocused, uiView.isFirstResponder {
+            DispatchQueue.main.async {
+                guard uiView.isFirstResponder else { return }
+                uiView.resignFirstResponder()
+            }
+        }
+    }
+
+    final class Coordinator: NSObject, UITextFieldDelegate {
+        var parent: CategorySearchField
+
+        init(_ parent: CategorySearchField) {
+            self.parent = parent
+        }
+
+        @objc func textChanged(_ textField: UITextField) {
+            parent.text = textField.text ?? ""
+        }
+
+        func textFieldDidBeginEditing(_ textField: UITextField) {
+            parent.isFocused = true
+        }
+
+        func textFieldDidEndEditing(_ textField: UITextField) {
+            parent.isFocused = false
+        }
+
+        func textFieldShouldReturn(_ textField: UITextField) -> Bool {
+            parent.isFocused = false
+            return true
         }
     }
 }

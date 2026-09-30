@@ -10,9 +10,18 @@ import Testing
 @Suite(.serialized)
 @MainActor
 struct DemoDataSeederTests {
-
-    private func seedAndOpen(tracking: Bool = false, now: Date = Date()) throws -> BudgetDatabase {
-        try DemoDataSeeder.seed(tracking: tracking, now: now)
+    private func seedAndOpen(
+        tracking: Bool = false,
+        seedUncategorized: Bool = false,
+        seedUnsupportedBankSync: Bool = false,
+        now: Date = Date()
+    ) throws -> BudgetDatabase {
+        try DemoDataSeeder.seed(
+            tracking: tracking,
+            seedUncategorized: seedUncategorized,
+            seedUnsupportedBankSync: seedUnsupportedBankSync,
+            now: now
+        )
         let dbPath = BudgetFileManager.shared.databasePath(for: DemoDataSeeder.budgetId)
         return try BudgetDatabase(path: dbPath)
     }
@@ -37,6 +46,30 @@ struct DemoDataSeederTests {
         #expect(month.incomeCategories.contains { $0.budgeted > 0 })
     }
 
+    /// The Budget screen's uncategorized bar renders only when an on-budget
+    /// transaction lacks a category, and the default demo seed has none — the
+    /// `seedUncategorized` hook exists so UI tests can render the bar.
+    @Test func seedUncategorizedAddsExactlyOneUncategorizedTransaction() async throws {
+        let defaultSeed = try seedAndOpen()
+        #expect(try await defaultSeed.fetchUncategorizedCount() == 0)
+
+        let seeded = try seedAndOpen(seedUncategorized: true)
+        #expect(try await seeded.fetchUncategorizedCount() == 1)
+    }
+
+    /// `seedUnsupportedBankSync` links two accounts to providers Actuali can't
+    /// refresh (GH #499); the default demo stays unlinked.
+    @Test func seedUnsupportedBankSyncLinksGoCardlessAndPluggy() async throws {
+        #expect(try await seedAndOpen().fetchBankSyncAccounts().isEmpty)
+
+        let linked = try await seedAndOpen(seedUnsupportedBankSync: true).fetchBankSyncAccounts()
+        #expect(Dictionary(uniqueKeysWithValues: linked.map { ($0.name, $0.syncSource) }) == [
+            "Chase Checking": "goCardless",
+            "Ally Savings": "pluggyai",
+        ])
+        #expect(linked.allSatisfy { !$0.externalAccountId.isEmpty })
+    }
+
     /// The default (envelope) demo keeps its "To Budget" unallocated-funds
     /// figure — the tracking flag must not leak into the normal path.
     @Test func envelopeSeedKeepsToBudget() async throws {
@@ -58,8 +91,8 @@ struct DemoDataSeederTests {
         #expect(!newest.cleared)
     }
 
-    // Two pages so the demo exercises the dashboard switcher (GH #120);
-    // "Main" is first so it's the default dashboard on open.
+    /// Two pages so the demo exercises the dashboard switcher (GH #120);
+    /// "Main" is first so it's the default dashboard on open.
     @Test func seedsTwoDashboardPages() async throws {
         let database = try seedAndOpen()
         let pages = try await database.fetchDashboardPages()
@@ -97,8 +130,12 @@ struct DemoDataSeederTests {
         var netWorthMeta: NetWorthMeta?
         var summaryMeta: SummaryMeta?
         for widget in widgets {
-            if case .netWorth(_, let meta) = widget { netWorthMeta = meta }
-            if case .summary(_, let meta) = widget { summaryMeta = meta }
+            if case .netWorth(_, let meta) = widget {
+                netWorthMeta = meta
+            }
+            if case .summary(_, let meta) = widget {
+                summaryMeta = meta
+            }
         }
 
         // Net worth: the seeded starting balance + activity must yield a chartable
@@ -113,6 +150,49 @@ struct DemoDataSeederTests {
 
     /// Every account needs a transfer payee (Actual creates one per account)
     /// or the add/edit transfer flows fail with "Transfer payee not found".
+    /// The demo ships a rules table (Settings > Rules must show the list, not
+    /// the "Rules Unavailable" placeholder) and two upcoming schedules backed
+    /// by their own rules, per ScheduleWriteBuilder.createPlan's shape.
+    @Test func seedsRulesAndSchedules() async throws {
+        let database = try seedAndOpen()
+
+        let rules = try await database.fetchRulesRanked()
+        #expect(rules.count == 3)
+
+        let schedules = try await database.fetchSchedules()
+        #expect(schedules.compactMap(\.name).sorted() == ["Netflix", "Rent"])
+        // Every schedule resolves its payee/account from the rule conditions,
+        // and the recurrence's day pattern matches the stored next date —
+        // mismatched patterns advance to the wrong day after the first post.
+        for schedule in schedules {
+            #expect(schedule.payeeId != nil && schedule.accountId != nil,
+                    "Schedule \(schedule.name ?? "?") is missing payee/account conditions")
+            guard case .recurring(let config) = try #require(schedule.dateCondition),
+                  let next = schedule.nextDate else { continue }
+            let patternDays = config.patterns.filter { $0.type == "day" }.map(\.value)
+            #expect(patternDays.contains(next.day),
+                    "\(schedule.name ?? "?") recurs on \(patternDays) but next date is \(next)")
+        }
+    }
+
+    /// Seeded schedules must be strictly future-dated: the auto-poster
+    /// (SchedulePoster.runIfNeeded) posts every schedule whose next date is
+    /// today or past, and a fresh demo load must never mutate its own seeded
+    /// data (or record history) on its own.
+    @Test func seededSchedulesAreNeverDueOnLoad() async throws {
+        // One reference instant for both seed and assertion: two independent
+        // Date() calls would flake if the test straddles local midnight.
+        let now = Date()
+        let database = try seedAndOpen(now: now)
+        let schedules = try await database.fetchSchedules()
+        #expect(!schedules.isEmpty)
+        let today = DayDate.today(now: now)
+        for schedule in schedules {
+            let next = try #require(schedule.nextDate)
+            #expect(next > today, "\(schedule.name ?? "?") is due at load")
+        }
+    }
+
     @Test func everyAccountHasATransferPayee() async throws {
         let database = try seedAndOpen()
         let accounts = try await database.fetchAccounts()
@@ -135,13 +215,52 @@ struct DemoDataSeederTests {
         let transactions = try await database.fetchTransactions()
 
         let startingBalances = transactions.filter { $0.payeeName == "Starting Balance" }
-        #expect(startingBalances.count == 3)
+        #expect(startingBalances.count == 5)
         for transaction in startingBalances {
             let account = try #require(accounts.first { $0.id == transaction.accountId })
             #expect((transaction.categoryId == nil) == account.offBudget,
                     "\(account.name) starting balance miscategorized")
         }
         #expect(try await database.fetchUncategorizedCount() == 0)
+    }
+
+    /// The demo tracks a loan and a deposit so both features show in demo
+    /// mode. The loan must be off-budget (Record Payment refuses otherwise),
+    /// paid down by paired transfers, and the CD must have earned interest.
+    @Test func seedsATrackedLoanAndDeposit() async throws {
+        let database = try seedAndOpen()
+        let accounts = try await database.fetchAccounts()
+        let transactions = try await database.fetchTransactions()
+
+        let (loanId, loan) = try #require(try await database.fetchLoanConfigs().first)
+        let loanAccount = try #require(accounts.first { $0.id == loanId })
+        #expect(loanAccount.offBudget)
+        #expect(loanAccount.balance > -loan.originalBalance)
+        #expect(loan.categoryId != nil)
+
+        let payments = transactions.filter { $0.accountId == loanId && $0.transferId != nil }
+        #expect(!payments.isEmpty)
+        for payment in payments {
+            let partner = try #require(transactions.first { $0.id == payment.transferId })
+            #expect(partner.transferId == payment.id)
+            #expect(partner.categoryId == loan.categoryId)
+        }
+
+        let (depositId, deposit) = try #require(try await database.fetchDepositConfigs().first)
+        let depositAccount = try #require(accounts.first { $0.id == depositId })
+        #expect(depositAccount.balance > deposit.amount)
+    }
+
+    @Test func seedsCardMappingsToOpenAccounts() async throws {
+        let database = try seedAndOpen()
+        let accountsByName = try await Dictionary(uniqueKeysWithValues: database.fetchAccounts().map { ($0.name, $0.id) })
+        let mappings = try await database.fetchCardAccountMappings()
+
+        #expect(mappings == [
+            "4417": accountsByName["Apple Card"],
+            "Goldman Sachs": accountsByName["Apple Card"],
+            "8830": accountsByName["Chase Checking"],
+        ])
     }
 
     /// The demo budget must support notes and ship one, or the category note
@@ -152,7 +271,8 @@ struct DemoDataSeederTests {
         let groups = try await database.fetchCategoryGroups()
 
         let groceries = try #require(
-            groups.flatMap(\.categories).first { $0.name == "Groceries" })
+            groups.flatMap(\.categories).first { $0.name == "Groceries" }
+        )
         let note = try await database.fetchNote(id: groceries.id)
 
         #expect(note.supported)
@@ -199,5 +319,35 @@ struct DemoDataSeederTests {
 
         #expect(note.supported)
         #expect(note.isEmpty)
+    }
+
+    @Test func seededBudgetShipsTagsAndTaggedTransactions() async throws {
+        let database = try seedAndOpen()
+        let tags = try await database.fetchTags(includeHidden: true)
+
+        #expect(tags.count >= 5)
+        let tagNames = Set(tags.map(\.tag))
+        #expect(tagNames.contains("coffee"))
+        #expect(tagNames.contains("vacation"))
+        #expect(tagNames.contains("reimbursable"))
+        #expect(tagNames.contains("tax-deductible"))
+        #expect(tagNames.contains("refund"))
+
+        let transactions = try await database.fetchTransactions()
+        let taggedTransactions = transactions.filter { $0.notes?.contains("#") == true }
+        #expect(!taggedTransactions.isEmpty)
+
+        let summaries = try await database.fetchTagSummaries()
+        #expect(!summaries.isEmpty)
+        let coffeeSummary = summaries.first { $0.tag.tag == "coffee" }
+        #expect(coffeeSummary != nil)
+        #expect((coffeeSummary?.transactionCount ?? 0) > 0)
+        #expect((coffeeSummary?.totalSpent ?? 0) > 0)
+
+        let refundSummary = summaries.first { $0.tag.tag == "refund" }
+        #expect(refundSummary != nil)
+        #expect((refundSummary?.transactionCount ?? 0) > 0)
+        #expect(refundSummary?.totalSpent == 0)
+        #expect((refundSummary?.netAmount ?? 0) > 0)
     }
 }

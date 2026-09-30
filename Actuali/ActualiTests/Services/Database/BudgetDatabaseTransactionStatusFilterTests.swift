@@ -1,19 +1,18 @@
 import Foundation
-import Testing
 import GRDB
+import Testing
 @testable import Actuali
 
 /// Pins the status-filter chips on the transaction lists (GH #439):
 /// All / Uncategorized / Uncleared / Cleared / Reconciled. The filter runs in
 /// SQL so pages stay full-sized and cover full history, composes with the
-/// account scope, search, and paging, and takes precedence over the legacy
-/// hide-cleared / hide-reconciled toggles — an explicit filter is its own
-/// visibility rule, the same precedent as the Budget tab. `cleared` means
+/// account scope, search, and paging. `.all` hides nothing: the legacy
+/// hide-cleared / hide-reconciled toggles that used to narrow it were removed
+/// (GH #573) because the chips cover both. `cleared` means
 /// cleared-but-not-reconciled: with `uncleared` and `reconciled` the three
 /// status chips partition the list, matching the row status dot.
 @MainActor
 struct BudgetDatabaseTransactionStatusFilterTests {
-
     private func makeDatabase() throws -> (BudgetDatabase, URL) {
         let tempURL = FileManager.default.temporaryDirectory
             .appendingPathComponent("test-\(UUID().uuidString).sqlite")
@@ -130,6 +129,10 @@ struct BudgetDatabaseTransactionStatusFilterTests {
 
         let all = try await db.fetchTransactions(statusFilter: .all)
         #expect(all.map(\.id) == ["t-pending", "t-cleared", "t-reconciled"])
+
+        // The account register takes the same path (GH #573).
+        let account = try await db.fetchTransactions(accountId: "acct-1", statusFilter: .all)
+        #expect(account.map(\.id) == ["t-pending", "t-cleared", "t-reconciled"])
     }
 
     @Test func unclearedKeepsOnlyUnclearedRows() async throws {
@@ -162,30 +165,14 @@ struct BudgetDatabaseTransactionStatusFilterTests {
         #expect(reconciled.map(\.id) == ["t-reconciled"])
     }
 
-    @Test func explicitStatusFilterOverridesLegacyHideToggles() async throws {
+    @Test func unreconciledKeepsUnclearedAndClearedRows() async throws {
         let (db, url) = try makeDatabase()
         defer { cleanup(url) }
         try await seedLookups(db)
         try await seedStatuses(db)
 
-        // Uncleared chip with "hide cleared" already on (a no-op on an
-        // uncleared-only list) still shows the uncleared row.
-        let uncleared = try await db.fetchTransactions(
-            statusFilter: .uncleared, unclearedOnly: true, hideReconciled: true
-        )
-        #expect(uncleared.map(\.id) == ["t-pending"])
-
-        // Reconciled chip beats both legacy hide flags.
-        let reconciled = try await db.fetchTransactions(
-            statusFilter: .reconciled, unclearedOnly: true, hideReconciled: true
-        )
-        #expect(reconciled.map(\.id) == ["t-reconciled"])
-
-        // Cleared chip beats hide-reconciled and does not drag reconciled in.
-        let cleared = try await db.fetchTransactions(
-            statusFilter: .cleared, unclearedOnly: true, hideReconciled: true
-        )
-        #expect(cleared.map(\.id) == ["t-cleared"])
+        let unreconciled = try await db.fetchTransactions(statusFilter: .unreconciled)
+        #expect(unreconciled.map(\.id) == ["t-pending", "t-cleared"])
     }
 
     @Test func uncategorizedMatchesTheUncategorizedListFilter() async throws {
@@ -226,30 +213,30 @@ struct BudgetDatabaseTransactionStatusFilterTests {
 
         try await db.dbQueueForTesting.write { conn in
             try conn.execute(sql: """
-                INSERT INTO transactions (id, acct, category, description, amount, date, sort_order, isParent, isChild, parent_id, tombstone) VALUES
-                    ('t-split-mixed',     'acct-1', NULL,   'payee-market', -1000, 20260605, 7, 1, 0, NULL, 0),
-                    ('t-split-mixed-c',   'acct-1', 'cat-1', NULL,           0,     20260605, 7, 0, 1, 't-split-mixed', 0),
-                    ('t-split-mixed-u',   'acct-1', NULL,   NULL,           0,     20260605, 7, 0, 1, 't-split-mixed', 0),
-                    ('t-split-categorized', 'acct-1', NULL, 'payee-market', -2000, 20260604, 6, 1, 0, NULL, 0),
-                    ('t-split-cat-c',     'acct-1', 'cat-1', NULL,           0,     20260604, 6, 0, 1, 't-split-categorized', 0),
-                    ('t-split-dead',      'acct-1', NULL,   'payee-market', -3000, 20260603, 5, 1, 0, NULL, 0),
-                    ('t-split-dead-u',    'acct-1', NULL,   NULL,           0,     20260603, 5, 0, 1, 't-split-dead', 1),
-                    ('t-split-on-transfer', 'acct-1', NULL, 'payee-market', -4000, 20260602, 4, 1, 0, NULL, 0),
-                    ('t-split-on-transfer-cat', 'acct-1', 'cat-1', 'payee-market', 0, 20260602, 4, 0, 1, 't-split-on-transfer', 0),
-                    ('t-split-on-transfer-c', 'acct-1', NULL, 'payee-transfer-on', 0, 20260602, 4, 0, 1, 't-split-on-transfer', 0),
-                    ('t-split-parent-transfer', 'acct-1', NULL, 'payee-transfer-on', -5000, 20260601, 3, 1, 0, NULL, 0),
-                    ('t-split-parent-transfer-cat', 'acct-1', 'cat-1', 'payee-market', 0, 20260601, 3, 0, 1, 't-split-parent-transfer', 0),
-                    ('t-split-parent-transfer-c', 'acct-1', NULL, 'payee-market', 0, 20260601, 3, 0, 1, 't-split-parent-transfer', 0),
-                    ('t-split-off-transfer', 'acct-1', NULL, 'payee-market', -6000, 20260531, 2, 1, 0, NULL, 0),
-                    ('t-split-off-transfer-cat', 'acct-1', 'cat-1', 'payee-market', 0, 20260531, 2, 0, 1, 't-split-off-transfer', 0),
-                    ('t-split-off-transfer-c', 'acct-1', NULL, 'payee-transfer-off', 0, 20260531, 2, 0, 1, 't-split-off-transfer', 0),
-                    ('t-orphan-acct',     'acct-gone', NULL, 'payee-market', -4000, 20260602, 4, 0, 0, NULL, 0);
-                """)
+            INSERT INTO transactions (id, acct, category, description, amount, date, sort_order, isParent, isChild, parent_id, tombstone) VALUES
+                ('t-split-mixed',     'acct-1', NULL,   'payee-market', -1000, 20260605, 7, 1, 0, NULL, 0),
+                ('t-split-mixed-c',   'acct-1', 'cat-1', NULL,           0,     20260605, 7, 0, 1, 't-split-mixed', 0),
+                ('t-split-mixed-u',   'acct-1', NULL,   NULL,           0,     20260605, 7, 0, 1, 't-split-mixed', 0),
+                ('t-split-categorized', 'acct-1', NULL, 'payee-market', -2000, 20260604, 6, 1, 0, NULL, 0),
+                ('t-split-cat-c',     'acct-1', 'cat-1', NULL,           0,     20260604, 6, 0, 1, 't-split-categorized', 0),
+                ('t-split-dead',      'acct-1', NULL,   'payee-market', -3000, 20260603, 5, 1, 0, NULL, 0),
+                ('t-split-dead-u',    'acct-1', NULL,   NULL,           0,     20260603, 5, 0, 1, 't-split-dead', 1),
+                ('t-split-on-transfer', 'acct-1', NULL, 'payee-market', -4000, 20260602, 4, 1, 0, NULL, 0),
+                ('t-split-on-transfer-cat', 'acct-1', 'cat-1', 'payee-market', 0, 20260602, 4, 0, 1, 't-split-on-transfer', 0),
+                ('t-split-on-transfer-c', 'acct-1', NULL, 'payee-transfer-on', 0, 20260602, 4, 0, 1, 't-split-on-transfer', 0),
+                ('t-split-parent-transfer', 'acct-1', NULL, 'payee-transfer-on', -5000, 20260601, 3, 1, 0, NULL, 0),
+                ('t-split-parent-transfer-cat', 'acct-1', 'cat-1', 'payee-market', 0, 20260601, 3, 0, 1, 't-split-parent-transfer', 0),
+                ('t-split-parent-transfer-c', 'acct-1', NULL, 'payee-market', 0, 20260601, 3, 0, 1, 't-split-parent-transfer', 0),
+                ('t-split-off-transfer', 'acct-1', NULL, 'payee-market', -6000, 20260531, 2, 1, 0, NULL, 0),
+                ('t-split-off-transfer-cat', 'acct-1', 'cat-1', 'payee-market', 0, 20260531, 2, 0, 1, 't-split-off-transfer', 0),
+                ('t-split-off-transfer-c', 'acct-1', NULL, 'payee-transfer-off', 0, 20260531, 2, 0, 1, 't-split-off-transfer', 0),
+                ('t-orphan-acct',     'acct-gone', NULL, 'payee-market', -4000, 20260602, 4, 0, 0, NULL, 0);
+            """)
         }
 
         let uncategorized = try await db.fetchTransactions(statusFilter: .uncategorized)
         #expect(uncategorized.map(\.id) == [
-            "t-split-mixed", "t-split-parent-transfer", "t-split-off-transfer"
+            "t-split-mixed", "t-split-parent-transfer", "t-split-off-transfer",
         ])
     }
 
@@ -265,7 +252,7 @@ struct BudgetDatabaseTransactionStatusFilterTests {
             "('t-market-2', 'acct-1', 'payee-market', -1000, 20260604, 4)",
             "('t-cafe-2', 'acct-1', 'payee-market', -1000, 20260603, 3)",
             "('t-market-1', 'acct-1', 'payee-market', -1000, 20260602, 2)",
-            "('t-cafe-1', 'acct-1', 'payee-market', -1000, 20260601, 1)"
+            "('t-cafe-1', 'acct-1', 'payee-market', -1000, 20260601, 1)",
         ].joined(separator: ",\n")
         try await db.dbQueueForTesting.write { conn in
             try conn.execute(sql: """

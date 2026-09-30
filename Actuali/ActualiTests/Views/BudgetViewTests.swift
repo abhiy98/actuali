@@ -3,8 +3,10 @@ import Testing
 @testable import Actuali
 
 struct BudgetViewTests {
+    private var appBundle: Bundle {
+        .main
+    }
 
-    private var appBundle: Bundle { .main }
     private var actualiBundle: Bundle {
         Bundle(identifier: "com.mfazz.ActualiOS")!
     }
@@ -25,6 +27,27 @@ struct BudgetViewTests {
         )
 
         #expect(ids == ["essentials", "lifestyle"])
+    }
+
+    // MARK: - Month note (GH #567)
+
+    @Test func monthNoteOffersTheNoteReadForTheSelectedMonth() {
+        let note = EntityNote(supported: true, text: "Holiday month")
+
+        #expect(BudgetView.monthNote(note, loadedFor: "2026-09", selectedMonth: "2026-09") == note)
+    }
+
+    /// Right after a month change the previous month's note is still in
+    /// state; offering it would let a save overwrite the new month's note.
+    @Test func monthNoteHidesAnotherMonthsNote() {
+        let note = EntityNote(supported: true, text: "Holiday month")
+
+        #expect(BudgetView.monthNote(note, loadedFor: "2026-08", selectedMonth: "2026-09") == .unsupported)
+        #expect(BudgetView.monthNote(note, loadedFor: nil, selectedMonth: "2026-09") == .unsupported)
+    }
+
+    @Test func monthNoteStaysUnsupportedWithoutANotesTable() {
+        #expect(BudgetView.monthNote(.unsupported, loadedFor: "2026-09", selectedMonth: "2026-09") == .unsupported)
     }
 
     @Test func monthPickerTitleUsesRequestedLocale() {
@@ -115,7 +138,7 @@ struct BudgetViewTests {
             ("en_US", "Groceries", "$25.00", "Recommended: Groceries ($25.00)", "Groceries ($25.00)"),
             ("fr_FR", "Courses", "25,00 €", "Recommandé : Courses (25,00 €)", "Courses (25,00 €)"),
             ("de_DE", "Lebensmittel", "25,00 €", "Empfohlen: Lebensmittel (25,00 €)", "Lebensmittel (25,00 €)"),
-            ("pt_BR", "Mercado", "R$ 25,00", "Recomendado: Mercado (R$ 25,00)", "Mercado (R$ 25,00)")
+            ("pt_BR", "Mercado", "R$ 25,00", "Recomendado: Mercado (R$ 25,00)", "Mercado (R$ 25,00)"),
         ]
 
         for (identifier, categoryName, amount, recommended, ordinary) in cases {
@@ -123,5 +146,49 @@ struct BudgetViewTests {
             #expect(BudgetTransferLocalization.candidateLabel(categoryName: categoryName, amount: amount, isRecommended: true, locale: locale, bundle: actualiBundle) == recommended)
             #expect(BudgetTransferLocalization.candidateLabel(categoryName: categoryName, amount: amount, isRecommended: false, locale: locale, bundle: actualiBundle) == ordinary)
         }
+    }
+
+    @Test func templateAlertMonthRunReportsUpToDateAsSuccess() {
+        let alert = BudgetView.templateAlert(
+            .upToDate,
+            locale: Locale(identifier: "en_US"),
+            bundle: appBundle
+        )
+
+        #expect(alert.title == "Templates Applied")
+        #expect(alert.message == "All templates are up to date.")
+    }
+
+    /// A single-category run on a templateless category must not read as a
+    /// month-wide success — GH #577 review.
+    @Test func templateAlertSingleCategoryUpToDateNamesTheCategory() {
+        let alert = BudgetView.templateAlert(
+            .upToDate,
+            singleCategory: true,
+            locale: Locale(identifier: "en_US"),
+            bundle: appBundle
+        )
+
+        #expect(alert.title == "Apply Budget Template")
+        #expect(alert.message == "No templates to apply for this category.")
+    }
+
+    @Test func templateAlertAppliedAndFailureCases() {
+        let applied = BudgetView.templateAlert(
+            .applied(3),
+            singleCategory: true,
+            locale: Locale(identifier: "en_US"),
+            bundle: appBundle
+        )
+        #expect(applied.title == "Templates Applied")
+        #expect(applied.message == "Successfully applied templates to 3 categories.")
+
+        let failed = BudgetView.templateAlert(
+            .failed("sync unavailable"),
+            locale: Locale(identifier: "en_US"),
+            bundle: appBundle
+        )
+        #expect(failed.title == "Template Error")
+        #expect(failed.message == "sync unavailable")
     }
 }

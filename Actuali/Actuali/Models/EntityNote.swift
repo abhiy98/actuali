@@ -17,7 +17,9 @@ struct EntityNote: Equatable {
 
     static let unsupported = EntityNote(supported: false, text: "")
 
-    var isEmpty: Bool { text.isEmpty }
+    var isEmpty: Bool {
+        text.isEmpty
+    }
 
     /// What to persist for text the user typed. Whitespace-only input clears
     /// the note instead of storing blanks that would render as an empty-looking
@@ -38,5 +40,13 @@ struct EntityNote: Equatable {
     /// looks — invisible in both directions.
     static func accountNoteId(_ accountId: String) -> String {
         "account-\(accountId)"
+    }
+
+    /// The `notes.id` a budget month's note lives at (GH #567), for a
+    /// `YYYY-MM` month. Same prefix Actual uses: `budget-${month}` in
+    /// desktop-client's envelope/tracking BudgetSummary and mobile BudgetPage,
+    /// with `month` in loot-core's `yyyy-MM` form.
+    static func monthNoteId(_ month: String) -> String {
+        "budget-\(month)"
     }
 }

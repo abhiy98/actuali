@@ -3,7 +3,6 @@ import Testing
 @testable import Actuali
 
 struct CategoryBudgetProgressTests {
-
     private var actualiBundle: Bundle {
         Bundle(identifier: "com.mfazz.ActualiOS")!
     }
@@ -95,7 +94,7 @@ struct CategoryBudgetProgressTests {
             "pt_BR": ["Excedido", "Totalmente gasto", "Parcialmente gasto", "Financiado", "Nenhum dinheiro atribuído"],
             "de_DE": ["Überzogen", "Vollständig ausgegeben", "Teilweise ausgegeben", "Finanziert", "Kein Geld zugewiesen"],
             "it_IT": ["In eccesso", "Speso interamente", "Speso parzialmente", "Finanziato", "Nessun importo assegnato"],
-            "nl_NL": ["Overschreden", "Volledig uitgegeven", "Gedeeltelijk uitgegeven", "Gefinancierd", "Geen geld toegewezen"]
+            "nl_NL": ["Overschreden", "Volledig uitgegeven", "Gedeeltelijk uitgegeven", "Gefinancierd", "Geen geld toegewezen"],
         ]
         let states: [CategoryProgressState] = [.overspent, .spent, .spending, .funded, .unassigned]
 
@@ -112,7 +111,7 @@ struct CategoryBudgetProgressTests {
         let history = [
             makeCategory(budgeted: 9000, spent: -8000, available: 1000),
             makeCategory(budgeted: 6000, spent: -4000, available: 2000),
-            makeCategory(budgeted: 3000, spent: 1000, available: 4000)
+            makeCategory(budgeted: 3000, spent: 1000, available: 4000),
         ]
         let byKind = Dictionary(uniqueKeysWithValues:
             current.quickAssignSuggestions(history: history).map { ($0.kind, $0.amount) })
@@ -129,8 +128,8 @@ struct CategoryBudgetProgressTests {
         #expect(current.quickAssignSuggestions(history: []).isEmpty)
     }
 
-    // With one history month the average equals Spent Last Month; offering
-    // both would just duplicate the suggestion.
+    /// With one history month the average equals Spent Last Month; offering
+    /// both would just duplicate the suggestion.
     @Test func quickAssignOmitsAverageForASingleHistoryMonth() {
         let current = makeCategory(budgeted: 10000, spent: -4000, available: 6000)
         let history = [makeCategory(budgeted: 9000, spent: -8000, available: 1000)]
@@ -149,9 +148,6 @@ struct CategoryBudgetProgressTests {
         #expect(BudgetCategoryFilter.overspent.includes(overspent))
         #expect(!BudgetCategoryFilter.overspent.includes(unassigned))
         #expect(BudgetCategoryFilter.unassigned.includes(unassigned))
-        #expect(BudgetCategoryFilter.needsAttention.includes(overspent))
-        #expect(BudgetCategoryFilter.needsAttention.includes(unassigned))
-        #expect(!BudgetCategoryFilter.needsAttention.includes(funded))
         #expect(BudgetCategoryFilter.onTrack.includes(funded))
         #expect(!BudgetCategoryFilter.onTrack.includes(unassigned))
         #expect(BudgetCategoryFilter.approachingLimit.includes(approaching))
@@ -159,50 +155,24 @@ struct CategoryBudgetProgressTests {
         #expect(!BudgetCategoryFilter.approachingLimit.includes(overspent))
     }
 
-    @Test(arguments: ["en_US", "fr_FR", "pt_BR", "es_ES", "de_DE", "it_IT", "nl_NL"])
+    @Test(arguments: ["fr_FR", "pt_BR", "it_IT"])
     func filterTitlesSelectTheCorrectPluralBranchForZeroOneAndTwo(identifier: String) {
-        let locale = Locale(identifier: identifier)
+        let expected = [
+            "fr_FR": ["Non financée (0)", "Non financée (1)", "Non financées (2)"],
+            "pt_BR": ["Não financiada (0)", "Não financiada (1)", "Não financiadas (2)"],
+            "it_IT": ["Non finanziate (0)", "Non finanziata (1)", "Non finanziate (2)"],
+        ][identifier]!
+
         let titles = (0...2).map { count in
-            BudgetCategoryFilter.needsAttention.title(
+            BudgetCategoryFilter.unassigned.title(
                 count: count,
                 isTrackingBudget: false,
-                locale: locale,
+                locale: Locale(identifier: identifier),
                 bundle: actualiBundle
             )
         }
 
-        #expect(titles[0].contains("0"))
-        #expect(titles[1].contains("1"))
-        #expect(titles[2].contains("2"))
-        if identifier == "en_US" {
-            #expect(titles[0] == "Needs attention (0)")
-            #expect(titles[1] == "Needs attention (1)")
-            #expect(titles[2] == "Needs attention (2)")
-        } else if identifier == "fr_FR" {
-            #expect(titles[0] == "Nécessite une attention (0)")
-            #expect(titles[1] == "Nécessite une attention (1)")
-            #expect(titles[2] == "Nécessitent une attention (2)")
-        } else if identifier == "pt_BR" {
-            #expect(titles[0] == "Precisa de atenção (0)")
-            #expect(titles[1] == "Precisa de atenção (1)")
-            #expect(titles[2] == "Precisam de atenção (2)")
-        } else if identifier == "es_ES" {
-            #expect(titles[0] == "Requieren atención (0)")
-            #expect(titles[1] == "Requiere atención (1)")
-            #expect(titles[2] == "Requieren atención (2)")
-        } else if identifier == "de_DE" {
-            #expect(titles[0] == "Benötigen Aufmerksamkeit (0)")
-            #expect(titles[1] == "Benötigt Aufmerksamkeit (1)")
-            #expect(titles[2] == "Benötigen Aufmerksamkeit (2)")
-        } else if identifier == "it_IT" {
-            #expect(titles[0] == "Richiedono attenzione (0)")
-            #expect(titles[1] == "Richiede attenzione (1)")
-            #expect(titles[2] == "Richiedono attenzione (2)")
-        } else {
-            #expect(titles[0] == "Hebben aandacht nodig (0)")
-            #expect(titles[1] == "Heeft aandacht nodig (1)")
-            #expect(titles[2] == "Hebben aandacht nodig (2)")
-        }
+        #expect(titles == expected)
     }
 
     @Test(arguments: ["fr_FR", "es_ES", "pt_BR", "de_DE", "it_IT", "nl_NL"])
@@ -242,9 +212,9 @@ struct CategoryBudgetProgressTests {
         }
     }
 
-    // The toolbar stepper abbreviates the month so its `.principal` item keeps
-    // a width UIKit will still centre; everything that reads a month aloud or
-    // in prose keeps the full name.
+    /// The toolbar stepper abbreviates the month so its `.principal` item keeps
+    /// a width UIKit will still centre; everything that reads a month aloud or
+    /// in prose keeps the full name.
     @Test func toolbarMonthTitleAbbreviatesButKeepsTheYear() {
         let short = MonthPicker.shortTitle(for: "2026-09")
         #expect(short.contains("2026"))

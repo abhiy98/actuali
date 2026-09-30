@@ -36,14 +36,14 @@ struct TransactionsListView: View {
     /// fetch closure needs the environment store, which isn't available
     /// until body/task time.
     private func currentPager() -> TransactionPager {
-        if let pager { return pager }
+        if let pager {
+            return pager
+        }
         let store = budgetStore
         let created = TransactionPager { offset, limit, search in
             await store.fetchTransactions(
                 limit: limit, offset: offset, search: search,
-                statusFilter: store.transactionStatusFilter,
-                unclearedOnly: store.hideClearedTransactions,
-                hideReconciled: store.hideReconciledTransactions
+                statusFilter: store.transactionStatusFilter
             )
         }
         pager = created
@@ -69,18 +69,6 @@ struct TransactionsListView: View {
                             budgetStore.transactionStatusFilter = .all
                         }
                     }
-                } else if budgetStore.hideClearedTransactions {
-                    ContentUnavailableView(
-                        "No Uncleared Transactions",
-                        systemImage: "checkmark.circle",
-                        description: Text("Everything is cleared. Turn off Hide Cleared Transactions to see the rest.")
-                    )
-                } else if budgetStore.hideReconciledTransactions {
-                    ContentUnavailableView(
-                        "No Unreconciled Transactions",
-                        systemImage: "lock.fill",
-                        description: Text("Everything is reconciled. Turn off Hide Reconciled Transactions to see the rest.")
-                    )
                 } else {
                     ContentUnavailableView(
                         "No Transactions",
@@ -152,22 +140,6 @@ struct TransactionsListView: View {
             ToolbarItem(placement: .secondaryAction) {
                 TransactionGroupingToggle()
             }
-            ToolbarItem(placement: .secondaryAction) {
-                Toggle(isOn: $budgetStore.hideClearedTransactions) {
-                    Label(
-                        "Hide Cleared Transactions",
-                        systemImage: budgetStore.hideClearedTransactions ? "eye.slash" : "eye"
-                    )
-                }
-            }
-            ToolbarItem(placement: .secondaryAction) {
-                Toggle(isOn: $budgetStore.hideReconciledTransactions) {
-                    Label(
-                        "Hide Reconciled Transactions",
-                        systemImage: budgetStore.hideReconciledTransactions ? "eye.slash" : "eye"
-                    )
-                }
-            }
         }
         .safeAreaInset(edge: .bottom) {
             if isSelecting, let pager {
@@ -183,7 +155,9 @@ struct TransactionsListView: View {
             // Debounce keystrokes; the initial (empty) load runs immediately.
             if searchQuery != nil {
                 try? await Task.sleep(for: .milliseconds(250))
-                if Task.isCancelled { return }
+                if Task.isCancelled {
+                    return
+                }
             }
             await reload()
         }
@@ -193,14 +167,6 @@ struct TransactionsListView: View {
             // deletes, sheet edits, sync, scheduled posts), so those sites
             // carry no reload calls of their own. Concurrent reloads are
             // safe: the pager's generation counter keeps the newest.
-            Task { await reload() }
-        }
-        .onChange(of: budgetStore.hideClearedTransactions) {
-            // The pager's fetch closure reads the flag, so a reload is all a
-            // toggle flip needs.
-            Task { await reload() }
-        }
-        .onChange(of: budgetStore.hideReconciledTransactions) {
             Task { await reload() }
         }
         .onChange(of: budgetStore.transactionStatusFilter) {
@@ -238,7 +204,7 @@ struct TransactionListRow: View {
     @Binding var isSelectionMode: Bool
     var isSelected: Bool = false
     @Binding var editing: Transaction?
-    var onToggleSelect: (() -> Void)? = nil
+    var onToggleSelect: (() -> Void)?
 
     /// A counter, not a Bool: `.sensoryFeedback` needs a value that changes
     /// on every long press, and the toolbar Select button must not fire it.
@@ -337,7 +303,7 @@ struct TransactionPagingSentinel: View {
 ///
 /// A Toggle rather than the Picker Settings uses: `.secondaryAction` silently
 /// drops a Picker when it collapses into the `…` menu (inline or not), while a
-/// Toggle renders — same as the "Hide Cleared Transactions" switch beside it.
+/// Toggle renders — same as the "Status Filters" switch beside it.
 /// The mode only has two cases, so nothing is lost.
 struct TransactionGroupingToggle: View {
     @EnvironmentObject private var budgetStore: BudgetStore
@@ -370,7 +336,7 @@ struct TransactionRow: View {
     /// Tap action for the cleared-status dot. Nil leaves the dot inert
     /// (split-child rows, contexts without a reload path). Reconciled rows
     /// confirm before invoking, since the store unlocks them instead.
-    var onToggleCleared: (() -> Void)? = nil
+    var onToggleCleared: (() -> Void)?
 
     @State private var confirmingUnlock = false
 
@@ -465,10 +431,10 @@ struct TransactionRow: View {
                 // label them "Split" like the desktop app, not "Unknown".
                 // Off-budget rows say "No payee": they're commonly payee-less
                 // (balance adjustments) and "Unknown" read as a bug (GH #123).
-                    Text(transaction.payeeName
-                     ?? (transaction.isParent
-                         ? String(localized: TransactionsListLocalization.split, locale: locale)
-                         : (isInOffBudgetAccount
+                Text(transaction.payeeName
+                    ?? (transaction.isParent
+                        ? String(localized: TransactionsListLocalization.split, locale: locale)
+                        : (isInOffBudgetAccount
                             ? String(localized: TransactionsListLocalization.noPayee, locale: locale)
                             : String(localized: TransactionsListLocalization.unknown, locale: locale))))
                     .font(.body)
@@ -482,6 +448,22 @@ struct TransactionRow: View {
                         .font(.caption)
                         .foregroundStyle(.secondary)
                     if let notes = transaction.notes, !notes.isEmpty {
+                        let extractedTags = TagFilter.extractHashtags(from: notes)
+                        if !extractedTags.isEmpty {
+                            ForEach(extractedTags.prefix(2), id: \.self) { rawTag in
+                                let clean = Tag.normalizeTagName(rawTag)
+                                let match = budgetStore.tagsByName[clean.lowercased()]
+                                let tagColor = match?.swiftUIColor ?? .secondary
+                                Text(rawTag)
+                                    .font(.system(size: 10, weight: .semibold))
+                                    .lineLimit(1)
+                                    .fixedSize(horizontal: true, vertical: false)
+                                    .padding(.horizontal, 5)
+                                    .padding(.vertical, 1.5)
+                                    .background(tagColor.opacity(0.15), in: Capsule())
+                                    .foregroundStyle(tagColor)
+                            }
+                        }
                         Text("・")
                             .font(.caption)
                             .foregroundStyle(.secondary)
@@ -501,6 +483,11 @@ struct TransactionRow: View {
             VStack(alignment: .trailing, spacing: 2) {
                 Text(budgetStore.displayBalance(transaction.amount))
                     .foregroundColor(transaction.isOutflow ? .primary : .green)
+                if let runningBalance = transaction.runningBalance {
+                    Text(budgetStore.displayBalance(runningBalance))
+                        .foregroundStyle(balanceColor(for: runningBalance))
+                        .font(.caption)
+                }
                 if showDate {
                     Text(transaction.dateFormatted)
                         .font(.caption)
@@ -516,7 +503,9 @@ struct TransactionRow: View {
             // mode removes the button and its confirmationDialog, so a
             // pending confirmingUnlock would otherwise surface later with no
             // toggle behind it.
-            if active { confirmingUnlock = false }
+            if active {
+                confirmingUnlock = false
+            }
         }
     }
 }

@@ -19,8 +19,8 @@ struct AddTransactionWithReviewIntent: AppIntent {
     @Parameter(title: LocalizedStringResource("Card or Account Hint"), default: "")
     var cardHint: String
 
-    // String, not Double, for the same reason as LogTransactionIntent:
-    // Wallet's amount coerces to 0 as a Number for some cards (issue #41).
+    /// String, not Double, for the same reason as LogTransactionIntent:
+    /// Wallet's amount coerces to 0 as a Number for some cards (issue #41).
     @Parameter(title: LocalizedStringResource("Amount"), default: "")
     var amount: String
 
@@ -68,16 +68,8 @@ struct AddTransactionWithReviewIntent: AppIntent {
             resolvedAccountId = await store.resolveAccountId(hint: cardHint)
         }
 
-        // Drop a category that no longer exists (deleted since the shortcut
-        // was configured) rather than pre-selecting a dangling id the form
-        // would happily save.
-        var resolvedCategoryId = category?.id
-        if let id = resolvedCategoryId {
-            let categories = await store.categoriesForIntent()
-            if !categories.contains(where: { $0.id == id }) {
-                resolvedCategoryId = nil
-            }
-        }
+        // The form would happily save a dangling id, so drop a deleted one.
+        let resolvedCategoryId = await store.existingCategoryId(category?.id)
 
         NotificationRouter.shared.pendingPrefill = Self.prefill(
             accountId: resolvedAccountId,

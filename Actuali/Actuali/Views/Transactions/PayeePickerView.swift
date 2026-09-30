@@ -88,9 +88,9 @@ struct PayeePickerView: View {
 
         guard !searchText.isEmpty else {
             let sorted = usablePayees.sorted {
-                    name($0).localizedCaseInsensitiveCompare(name($1))
-                        == .orderedAscending
-                }
+                name($0).localizedCaseInsensitiveCompare(name($1))
+                    == .orderedAscending
+            }
             guard transferFromAccountId != nil else {
                 return Array(sorted.prefix(20))
             }
@@ -116,7 +116,7 @@ struct PayeePickerView: View {
                     == .orderedAscending
             }
             .prefix(20)
-            .map { $0 }
+            .map(\.self)
     }
 
     nonisolated static func displayName(
@@ -298,36 +298,59 @@ struct PayeePickerView: View {
                 }
             }
             .task {
-                suggestedPayees = Self.allowedPayees(
-                    await budgetStore.fetchCommonPayees()
+                suggestedPayees = await Self.allowedPayees(
+                    budgetStore.fetchCommonPayees()
                 )
             }
         }
     }
 }
 
-// The picker's search field. `TextField(_:text:selection:)` (iOS 16+) is the
-// whole fix for GH #486: writing a select-all `TextSelection` while the field
-// is focused makes the first keystroke replace the pre-filled name — the
-// `.searchable` drawer field ignores `.searchSelection` writes entirely.
+/// The picker's search field. `TextField(_:text:selection:)` (iOS 16+) is the
+/// whole fix for GH #486: writing a select-all `TextSelection` while the field
+/// is focused makes the first keystroke replace the pre-filled name — the
+/// `.searchable` drawer field ignores `.searchSelection` writes entirely.
 private extension PayeePickerView {
     var searchBar: some View {
-        HStack(spacing: 6) {
-            Image(systemName: "magnifyingglass")
-                .foregroundStyle(.secondary)
+        PickerSearchBar(text: $searchText, clearButtonIdentifier: "payeePicker.clearSearch") {
             TextField("Search payees", text: $searchText, selection: $searchSelection)
                 .focused($searchFocused)
                 .textInputAutocapitalization(.words)
                 .autocorrectionDisabled()
                 .submitLabel(.done)
                 .onSubmit { searchFocused = false }
-            if !searchText.isEmpty {
+        }
+    }
+}
+
+struct PickerSearchBar<Field: View>: View {
+    @Binding private var text: String
+    private let clearButtonIdentifier: String
+    private let field: () -> Field
+
+    init(
+        text: Binding<String>,
+        clearButtonIdentifier: String,
+        @ViewBuilder field: @escaping () -> Field
+    ) {
+        _text = text
+        self.clearButtonIdentifier = clearButtonIdentifier
+        self.field = field
+    }
+
+    var body: some View {
+        HStack(spacing: 6) {
+            Image(systemName: "magnifyingglass")
+                .foregroundStyle(.secondary)
+            field()
+            if !text.isEmpty {
                 Button {
-                    searchText = ""
+                    text = ""
                 } label: {
                     Image(systemName: "xmark.circle.fill")
                         .foregroundStyle(.secondary)
                 }
+                .accessibilityIdentifier(clearButtonIdentifier)
                 .accessibilityLabel("Clear text")
             }
         }
