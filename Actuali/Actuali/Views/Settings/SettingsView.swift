@@ -124,6 +124,7 @@ struct SettingsView: View {
                         Link(destination: item.url) {
                             Label(item.title, systemImage: item.systemImage)
                         }
+                        .foregroundStyle(.primary)
                     }
                 } header: {
                     Text(String(localized: "iOS Shortcuts"))
@@ -135,6 +136,7 @@ struct SettingsView: View {
                         Link(destination: item.url) {
                             Label(item.title, systemImage: item.systemImage)
                         }
+                        .foregroundStyle(.primary)
                         .accessibilityIdentifier("settings.privacyPolicy")
                     }
                     ForEach(Self.informationItems, id: \.title) { item in
