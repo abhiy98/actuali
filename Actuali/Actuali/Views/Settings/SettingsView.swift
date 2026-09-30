@@ -122,21 +122,29 @@ struct SettingsView: View {
                 Section {
                     ForEach(Self.shortcutItems, id: \.title) { item in
                         Link(destination: item.url) {
-                            Label(item.title, systemImage: item.systemImage)
+                            Label {
+                                Text(item.title)
+                                    .foregroundStyle(.primary)
+                            } icon: {
+                                Image(systemName: item.systemImage)
+                            }
                         }
-                        .foregroundStyle(.primary)
                     }
                 } header: {
                     Text(String(localized: "iOS Shortcuts"))
                 } footer: {
-                    Text(String(localized: "Before using a shortcut, set up Card & Account Mappings in More → Transactions & Automation so purchases route to the right account."))
+                    Text(String(localized: "Before using a shortcut, ..."))
                 }
                 Section(String(localized: "Information")) {
                     ForEach(Self.informationLinkItems, id: \.title) { item in
-                        Link(destination: item.url) {
-                            Label(item.title, systemImage: item.systemImage)
+                    Link(destination: item.url) {
+                        Label {
+                            Text(item.title)
+                                .foregroundStyle(.primary)
+                        } icon: {
+                            Image(systemName: item.systemImage)
                         }
-                        .foregroundStyle(.primary)
+                    }
                         .accessibilityIdentifier("settings.privacyPolicy")
                     }
                     ForEach(Self.informationItems, id: \.title) { item in
