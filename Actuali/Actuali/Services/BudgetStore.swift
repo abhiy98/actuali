@@ -1860,6 +1860,7 @@ final class BudgetStore: ObservableObject {
         // Normalize here too: the field persists raw text per keystroke, and
         // only connect() normalizes — a value saved between connect and login
         // would otherwise fail validation on every subsequent launch.
+        await applyCustomHeadersToClientNow()
         try? await serverClient.configure(
             serverURL: serverURL,
             fallbackServerURL: Self.normalizedServerURL(fallbackServerURL)
@@ -1920,14 +1921,25 @@ final class BudgetStore: ObservableObject {
         }
     }
 
-    /// Push the current header set to the network client. Only rows with a
-    /// non-empty name are sent; names/values are trimmed of surrounding space.
-    private func applyCustomHeadersToClient() {
-        let headers: [(name: String, value: String)] = customHeaders
+    /// The current header set in the representation used by ActualServerClient.
+    /// Values stay in the Keychain-backed model and are never sent to diagnostics.
+    private var currentCustomHeadersForClient: [(name: String, value: String)] {
+        customHeaders
             .map { (name: $0.name.trimmingCharacters(in: .whitespaces),
                     value: $0.value.trimmingCharacters(in: .whitespaces)) }
             .filter { !$0.name.isEmpty }
+    }
+
+    /// Push the current header set to the network client for live edits.
+    private func applyCustomHeadersToClient() {
+        let headers = currentCustomHeadersForClient
         Task { await serverClient.setCustomHeaders(headers) }
+    }
+
+    /// Apply headers before configuring or probing a server, so the first request
+    /// cannot race an asynchronous property update.
+    private func applyCustomHeadersToClientNow() async {
+        await serverClient.setCustomHeaders(currentCustomHeadersForClient)
     }
 
     // MARK: - Server Connection
@@ -1950,13 +1962,11 @@ final class BudgetStore: ObservableObject {
         error = nil
 
         do {
+            await applyCustomHeadersToClientNow()
             try await serverClient.configure(
                 serverURL: normalized,
                 fallbackServerURL: normalizedFallback
             )
-            // Ensure the client carries the user's headers before any probe/login,
-            // so servers behind an auth proxy are reachable from the first request.
-            applyCustomHeadersToClient()
         } catch {
             self.error = error.localizedDescription
             isLoading = false
@@ -1995,6 +2005,7 @@ final class BudgetStore: ObservableObject {
         let previousServerURL = serverURL
         let previousFallbackServerURL = fallbackServerURL
         do {
+            await applyCustomHeadersToClientNow()
             if normalized != previousServerURL {
                 // Probe the primary without fallback so an unreachable edit
                 // cannot be accepted merely because its alternate responds.
@@ -2138,6 +2149,7 @@ final class BudgetStore: ObservableObject {
     ///   only an explicit Disconnect wipes it).
     func logout(clearLocalData: Bool = true) {
         Task {
+            await DiagnosticLog.shared.clear()
             await serverClient.setToken(nil)
         }
         try? Keychain.remove(for: "authToken")

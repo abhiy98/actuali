@@ -55,6 +55,7 @@ actor SyncClient {
     // MARK: - Dependencies
 
     private let serverClient: ActualServerClient
+    private let diagnosticLog: DiagnosticLog
     private weak var database: BudgetDatabase?
     private let clock: HybridLogicalClock
     private let messageGenerator: MessageGenerator
@@ -108,8 +109,13 @@ actor SyncClient {
 
     // MARK: - Initialization
 
-    init(serverClient: ActualServerClient, nodeId: String? = nil) {
+    init(
+        serverClient: ActualServerClient,
+        nodeId: String? = nil,
+        diagnosticLog: DiagnosticLog = .shared
+    ) {
         self.serverClient = serverClient
+        self.diagnosticLog = diagnosticLog
         self.clock = HybridLogicalClock(node: nodeId)
         self.messageGenerator = MessageGenerator(clock: clock)
         self.merkle = MerkleTree()
@@ -130,6 +136,7 @@ actor SyncClient {
         self.groupId = groupId
         self.encryptKeyId = keyId
         self.encoder = SyncEncoder(encryptionKey: encryptionKey)
+        await diagnosticLog.recordSyncConfiguration()
 
         // Load saved clock state
         if let clockRecord = try database.loadClock() {
@@ -2022,6 +2029,7 @@ actor SyncClient {
     /// parity it hadn't earned (#99, #121).
     func resetSyncState() async {
         logger.notice("resetSyncState() - clearing lastSyncedTimestamp")
+        await diagnosticLog.recordResyncTriggered(reason: .manualReset)
         syncTask?.cancel()
         lastSyncedTimestamp = nil
         retryDelay = 5
@@ -2174,24 +2182,34 @@ actor SyncClient {
     @discardableResult
     private func performSync() async -> Bool {
         logger.info("performSync() starting...")
+        await diagnosticLog.recordSyncStarted()
         stateSubject.send(.syncing)
 
         do {
             try await fullSync(since: nil, attemptCount: 0)
             logger.info("performSync() completed successfully")
+            await diagnosticLog.recordSyncFinished(.success)
             stateSubject.send(.idle)
             retryDelay = 5 // reset on success
             lastSuccessfulSyncTime = Date()
             return true
         } catch SyncError.offline {
-            guard !Task.isCancelled else { return false }
+            guard !Task.isCancelled else {
+                await diagnosticLog.recordSyncFinished(.cancelled)
+                return false
+            }
             logger.notice("performSync() failed - offline")
+            await diagnosticLog.recordSyncFinished(.offline)
             stateSubject.send(.offline)
             scheduleRetry()
             return false
         } catch {
-            guard !Task.isCancelled else { return false }
+            guard !Task.isCancelled else {
+                await diagnosticLog.recordSyncFinished(.cancelled)
+                return false
+            }
             logger.error("performSync() failed: \(error.localizedDescription, privacy: .public)")
+            await diagnosticLog.recordSyncFinished(.failed)
             stateSubject.send(.error(error.localizedDescription))
             scheduleRetry()
             return false
@@ -2297,12 +2315,14 @@ actor SyncClient {
         logger.debug("Encoded request: \(requestData.count, privacy: .public) bytes")
 
         // POST to server
+        await diagnosticLog.recordSyncRequestMessageCount(localMessages.count)
         logger.debug("Posting sync request to server...")
         let responseData = try await serverClient.postSync(requestData)
         logger.debug("Received response: \(responseData.count, privacy: .public) bytes")
 
         // Decode response
         let (remoteMessages, remoteMerkle) = try encoder.decode(responseData)
+        await diagnosticLog.recordSyncResponseMessageCount(remoteMessages.count)
         logger.debug("Decoded \(remoteMessages.count, privacy: .public) remote messages, merkle hash: \(remoteMerkle.hash, privacy: .public)")
 
         // Apply remote messages
@@ -2325,12 +2345,14 @@ actor SyncClient {
             // log above, so the divergence point is real and each pass narrows
             // it; `attemptCount` still bounds a pathological case.
             logger.debug("Merkle diff found at time: \(diffTime, privacy: .public), recursing...")
+            await diagnosticLog.recordMerkleMismatch()
 
             guard attemptCount < 10 else {
                 logger.error("Too many sync attempts, giving up")
                 throw SyncError.outOfSync
             }
             let diffTimestamp = HLCTimestamp(millis: diffTime, counter: 0, node: "0").toString()
+            await diagnosticLog.recordResyncTriggered(reason: .merkleMismatch)
             try await fullSync(since: diffTimestamp, attemptCount: attemptCount + 1)
         } else {
             // Fully synced — persist the HLC as the high-water mark (matches
