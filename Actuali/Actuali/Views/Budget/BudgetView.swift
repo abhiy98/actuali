@@ -1303,29 +1303,86 @@ struct BudgetCheckInStrip: View {
         ScrollView(.horizontal) {
             HStack(spacing: 8) {
                 ForEach(BudgetCategoryFilter.allCases) { filter in
+                    let filterCount = count(for: filter)
+                    let filterTitle = titleWithoutCount(
+                        for: filter,
+                        count: filterCount
+                    )
+                    let isSelected = selection == filter
+
                     Button {
                         selection = filter
                     } label: {
-                        Text(filter.title(
-                            count: count(for: filter),
-                            isTrackingBudget: budget.isTrackingBudget,
-                            locale: locale
-                        ))
-                        .filterChip(isSelected: selection == filter)
+                        filterChipLabel(
+                            title: filterTitle,
+                            count: filterCount,
+                            isSelected: isSelected
+                        )
                     }
                     .buttonStyle(.plain)
-                    .accessibilityLabel(ReportStrings.format("Show %@ categories", filter.title(
-                        count: count(for: filter),
-                        isTrackingBudget: budget.isTrackingBudget,
-                        locale: locale
-                    ), locale: locale, bundle: .main))
+                    .accessibilityLabel(
+                        ReportStrings.format(
+                            "Show %@ categories",
+                            filterTitle,
+                            locale: locale,
+                            bundle: .main
+                        )
+                    )
+                    .accessibilityValue(String(filterCount))
                     .accessibilityIdentifier("budgetFilter-\(filter.rawValue)")
-                    .accessibilityAddTraits(selection == filter ? .isSelected : [])
+                    .accessibilityAddTraits(
+                        isSelected ? .isSelected : []
+                    )
                 }
             }
         }
         .scrollIndicators(.hidden)
         .contentMargins(.horizontal, 4, for: .scrollContent)
+    }
+
+    private func filterChipLabel(
+        title: String,
+        count: Int,
+        isSelected: Bool
+    ) -> some View {
+        HStack(spacing: 6) {
+            Text(title)
+
+            Text(count, format: .number)
+                .font(.caption2.weight(.semibold))
+                .monospacedDigit()
+                .foregroundStyle(
+                    isSelected ? Color.white : Color.primary
+                )
+                .padding(.horizontal, 6)
+                .padding(.vertical, 2)
+                .background(
+                    isSelected
+                        ? Color.white.opacity(0.25)
+                        : Color.secondary.opacity(0.2),
+                    in: Capsule()
+                )
+        }
+        .filterChip(isSelected: isSelected)
+    }
+
+    private func titleWithoutCount(
+        for filter: BudgetCategoryFilter,
+        count: Int
+    ) -> String {
+        let title = filter.title(
+            count: count,
+            isTrackingBudget: budget.isTrackingBudget,
+            locale: locale
+        )
+
+        guard let openingParen = title.lastIndex(of: "("),
+              title.hasSuffix(")") else {
+            return title
+        }
+
+        return String(title[..<openingParen])
+            .trimmingCharacters(in: .whitespaces)
     }
 
     private func count(for filter: BudgetCategoryFilter) -> Int {
