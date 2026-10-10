@@ -1,7 +1,6 @@
 import XCTest
 
-/// The Budget tab's sparkles button holds the actions that change the month's
-/// budget; the `…` options menu keeps only view options.
+/// The Actuali-mark menu handles creation/reordering; the ellipsis holds all month-budget actions.
 final class BudgetActionsMenuUITests: XCTestCase {
     @MainActor private func launchBudgetTab(_ app: XCUIApplication) {
         app.launchArguments = ["-loadDemoData", "-budgetDisplayStyle", "clean"]
@@ -10,47 +9,61 @@ final class BudgetActionsMenuUITests: XCTestCase {
     }
 
     @MainActor
-    func testActionsMenuOffersTheBudgetActions() {
+    func testActualiMenuOffersOnlyCreationAndReordering() {
         let app = XCUIApplication()
         launchBudgetTab(app)
 
-        let actionsMenu = app.buttons["Budget actions"]
-        XCTAssertTrue(actionsMenu.waitForExistence(timeout: 10))
-        actionsMenu.tap()
+        let logoMenu = app.buttons["Actuali menu"]
+        XCTAssertTrue(logoMenu.waitForExistence(timeout: 10))
+        logoMenu.tap()
 
-        for action in ["Copy last month's budget", "Set budgets to zero"] {
+        for action in ["New Category", "Reorder Items"] {
             XCTAssertTrue(app.buttons[action].waitForExistence(timeout: 5),
-                          "the actions menu should offer '\(action)'")
+                          "the Actuali menu should offer '\(action)'")
         }
-        for action in ["Check Templates", "Apply Budget Template",
-                       "Overwrite with Budget Template", "End of Month Cleanup"] {
+        XCTAssertTrue(app.buttons.matching(
+            NSPredicate(format: "label IN %@", ["New Group", "New Category Group"])
+        ).firstMatch.waitForExistence(timeout: 5), "the Actuali menu should offer New Group")
+
+        for action in ["Copy last month's budget", "Set budgets to zero", "Check Templates",
+                       "Apply Budget Template", "Overwrite with Budget Template", "End of Month Cleanup"] {
             XCTAssertFalse(app.buttons[action].exists,
-                           "template actions should be hidden when goal templates are off")
+                           "'\(action)' belongs in the ellipsis menu, not the Actuali menu")
         }
     }
 
     @MainActor
-    func testOptionsMenuNoLongerHoldsTheBudgetActions() {
+    func testEllipsisContainsFormerTemplateMenuBudgetActions() {
         let app = XCUIApplication()
         launchBudgetTab(app)
 
         let optionsMenu = app.buttons["Budget options"]
         XCTAssertTrue(optionsMenu.waitForExistence(timeout: 10))
         optionsMenu.tap()
-
-        // A view option is there, so the menu has opened and the absences
-        // below are real.
         XCTAssertTrue(app.buttons["Clean"].waitForExistence(timeout: 5))
-        for action in ["Copy last month's budget", "Set budgets to zero",
-                       "Check Templates", "Apply Budget Template",
-                       "Overwrite with Budget Template", "End of Month Cleanup"] {
-            XCTAssertFalse(app.buttons[action].exists,
-                           "'\(action)' moved to the Budget actions menu")
+
+        for action in ["Copy last month's budget", "Set budgets to zero"] {
+            XCTAssertTrue(app.buttons[action].waitForExistence(timeout: 5),
+                          "the ellipsis should keep '\(action)' from the old template menu")
         }
+        for action in ["New Category", "Reorder Items"] {
+            XCTAssertFalse(app.buttons[action].exists,
+                           "'\(action)' belongs in the Actuali-mark menu, not the ellipsis menu")
+        }
+        for action in ["Check Templates", "Apply Budget Template", "Overwrite with Budget Template", "End of Month Cleanup"] {
+            let option = app.buttons[action]
+            XCTAssertTrue(option.waitForExistence(timeout: 5),
+                          "'\(action)' should remain visible in the ellipsis menu")
+            XCTAssertFalse(option.isEnabled,
+                           "'\(action)' should be disabled until Budget Goal Templates is enabled")
+        }
+        XCTAssertFalse(app.buttons.matching(
+            NSPredicate(format: "label IN %@", ["New Group", "New Category Group"])
+        ).firstMatch.exists)
     }
 
     @MainActor
-    func testEnvelopeBudgetOffersTemplatesAndCleanup() {
+    func testEnvelopeBudgetOffersAllTemplateActionsInEllipsis() {
         assertTemplateActions(tracking: false)
     }
 
@@ -84,12 +97,18 @@ final class BudgetActionsMenuUITests: XCTestCase {
         XCTAssertEqual(XCTWaiter.wait(for: [enabled], timeout: 5), .completed)
 
         app.tabBars.buttons["Budget"].tap()
-        let actionsMenu = app.buttons["budget.actionsMenu"]
-        XCTAssertTrue(actionsMenu.waitForExistence(timeout: 10))
-        actionsMenu.tap()
-        for action in ["Check Templates", "Apply Budget Template", "Overwrite with Budget Template"] {
-            XCTAssertTrue(app.buttons[action].waitForExistence(timeout: 5))
+        let optionsMenu = app.buttons["Budget options"]
+        XCTAssertTrue(optionsMenu.waitForExistence(timeout: 10))
+        optionsMenu.tap()
+        for action in ["Copy last month's budget", "Set budgets to zero", "Check Templates",
+                       "Apply Budget Template", "Overwrite with Budget Template"] {
+            let option = app.buttons[action]
+            XCTAssertTrue(option.waitForExistence(timeout: 5))
+            XCTAssertTrue(option.isEnabled, "'\(action)' should be enabled when Goal Templates is on")
         }
         XCTAssertEqual(app.buttons["End of Month Cleanup"].exists, !tracking)
+        if !tracking {
+            XCTAssertTrue(app.buttons["End of Month Cleanup"].isEnabled)
+        }
     }
 }

@@ -53,6 +53,15 @@ final class BudgetOptionsMenuUITests: XCTestCase {
                           "the options menu should offer '\(title)'")
         }
         XCTAssertFalse(app.buttons["Detailed"].exists)
+        for action in ["New Category", "Reorder Items"] {
+            XCTAssertFalse(app.buttons[action].exists,
+                           "'\(action)' belongs in the Actuali-mark menu, not the ellipsis menu")
+        }
+        for action in ["Copy last month's budget", "Set budgets to zero"] {
+            XCTAssertTrue(app.buttons[action].exists,
+                          "'\(action)' from the former template menu should be available here")
+        }
+        XCTAssertFalse(menuOption(app, "New Group", accessibilityLabel: "New Category Group").exists)
         XCTAssertTrue(app.buttons["Show Overview"].exists, "Show Overview applies to both styles")
         XCTAssertFalse(menuOption(app, "Show Spent", accessibilityLabel: "Show Spent Column").exists,
                        "Clean should not offer the Compact-only 'Show Spent Column' control")

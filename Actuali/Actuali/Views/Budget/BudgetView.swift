@@ -436,52 +436,31 @@ struct BudgetView: View {
     /// within the compiler's type-check budget.
     @ToolbarContentBuilder
     private var budgetToolbar: some ToolbarContent {
-        ToolbarItem(placement: .topBarLeading) {
-            // Reordering is turned on from the options menu; this is its way out.
-            if isReordering {
-                Button("Done") {
-                    toggleReordering()
-                }
-                .fontWeight(.semibold)
-                .accessibilityIdentifier("budget.reorderDone")
-            }
-        }
-        // New Category / New Group live at the top of the options menu below
-        // (GH #157 follow-up) — creation is one more "how this looks and
-        // what's in it" action rather than its own toolbar button.
         ToolbarItem(placement: .principal) {
             monthStepper
         }
         ToolbarItem(placement: .topBarLeading) {
-            // Budget actions get their own button so the options menu stays
-            // about how the table looks.
             if budgetStore.currentBudgetMonth != nil {
                 BudgetActionsMenu(
-                    onCopyPreviousMonthBudget: { copyPreviousMonthBudget() },
-                    onSetBudgetsToZero: { setBudgetsToZero() },
-                    onTemplateAction: budgetStore.goalTemplatesEnabled
-                        ? { runTemplates($0) } : nil,
-                    onCleanup: budgetStore.currentBudgetMonth?.isTrackingBudget == false
-                        && budgetStore.goalTemplatesEnabled
-                        ? { runCleanup() } : nil
+                    onNewCategory: { newBudgetItem = .category },
+                    canAddCategory: firstSelectableGroupId != nil,
+                    onNewGroup: { newBudgetItem = .group },
+                    onToggleReorder: { toggleReordering() },
+                    isReordering: isReordering
                 )
                 .tint(.primary)
             }
         }
         ToolbarItem(placement: .topBarTrailing) {
-            // Every "how should this look" control lives here (GH #157).
-            // Whole-table expand/collapse is a menu rather than a long-press
-            // on the group headers: SwiftUI context menus don't fire inside
-            // the clean style's section headers (GH #130).
-            // The isolated method references can't be inferred as optional
-            // closures under Swift 6, so wrap them.
             let hasBudget = budgetStore.currentBudgetMonth != nil
             BudgetOptionsMenu(
-                onNewCategory: hasBudget ? { newBudgetItem = .category } : nil,
-                canAddCategory: firstSelectableGroupId != nil,
-                onNewGroup: hasBudget ? { newBudgetItem = .group } : nil,
-                onToggleReorder: hasBudget ? { toggleReordering() } : nil,
-                isReordering: isReordering,
+                onCopyPreviousMonthBudget: hasBudget ? { copyPreviousMonthBudget() } : nil,
+                onSetBudgetsToZero: hasBudget ? { setBudgetsToZero() } : nil,
+                // Keep template actions visible in the ellipsis, but disabled until
+                // the synced Goal Templates feature is enabled in Budget View Settings.
+                onTemplateAction: hasBudget ? { runTemplates($0) } : nil,
+                onCleanup: hasBudget && budgetStore.currentBudgetMonth?.isTrackingBudget == false
+                    ? { runCleanup() } : nil,
                 expandAllGroups: hasBudget ? { expandAllGroups() } : nil,
                 collapseAllGroups: hasBudget ? { collapseAllGroups() } : nil
             )

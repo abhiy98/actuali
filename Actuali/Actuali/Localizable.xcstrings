@@ -14717,6 +14717,18 @@
         }
       }
     },
+    "Actuali menu" : {
+      "comment" : "Accessibility label for the Actuali-mark budget menu",
+      "localizations" : {
+        "de" : { "stringUnit" : { "state" : "translated", "value" : "Actuali-Menü" } },
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Actuali menu" } },
+        "es" : { "stringUnit" : { "state" : "translated", "value" : "Menú de Actuali" } },
+        "fr" : { "stringUnit" : { "state" : "translated", "value" : "Menu Actuali" } },
+        "it" : { "stringUnit" : { "state" : "translated", "value" : "Menu Actuali" } },
+        "nl" : { "stringUnit" : { "state" : "translated", "value" : "Actuali-menu" } },
+        "pt-BR" : { "stringUnit" : { "state" : "translated", "value" : "Menu Actuali" } }
+      }
+    },
     "Allow Actuali to read Wallet data in Settings to sync Apple Card, Apple Cash and Savings." : {
       "extractionState" : "stale",
       "localizations" : {

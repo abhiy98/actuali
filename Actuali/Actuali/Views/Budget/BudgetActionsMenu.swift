@@ -1,57 +1,42 @@
 import SwiftUI
 
-/// The Budget tab's sparkles button: the actions that change the month's
-/// budget, kept apart from the view options in `BudgetOptionsMenu`.
+/// The Budget tab's Actuali-mark menu for creating and reordering budget items.
 struct BudgetActionsMenu: View {
-    var onCopyPreviousMonthBudget: () -> Void
-    var onSetBudgetsToZero: () -> Void
-    /// Month-level goal-template actions (GH #371). nil hides the section
-    /// when the goalTemplatesEnabled flag is off, mirroring the web's month
-    /// menu behind its feature flag.
-    var onTemplateAction: ((BudgetStore.GoalTemplateAction) -> Void)?
-    var onCleanup: (() -> Void)?
+    var onNewCategory: () -> Void
+    var canAddCategory = true
+    var onNewGroup: () -> Void
+    var onToggleReorder: () -> Void
+    var isReordering = false
 
     var body: some View {
         Menu {
             Section {
-                Button(action: onCopyPreviousMonthBudget) {
-                    Label("Copy last month's budget", systemImage: "doc.on.doc")
+                Button(action: onNewCategory) {
+                    Label("New Category", systemImage: "tag")
                 }
-                .accessibilityIdentifier("budget.copyPreviousMonthBudget")
-                Button(action: onSetBudgetsToZero) {
-                    Label("Set budgets to zero", systemImage: "0.circle")
-                }
-            }
+                .disabled(!canAddCategory)
 
-            // The web month menu's three template actions, in its order.
-            if let onTemplateAction {
-                Section {
-                    Button {
-                        onTemplateAction(.check)
-                    } label: {
-                        Label("Check Templates", systemImage: "checkmark.seal")
-                    }
-                    Button {
-                        onTemplateAction(.apply)
-                    } label: {
-                        Label("Apply Budget Template", systemImage: "wand.and.stars")
-                    }
-                    Button {
-                        onTemplateAction(.overwrite)
-                    } label: {
-                        Label("Overwrite with Budget Template", systemImage: "wand.and.stars.inverse")
-                    }
-                    if let onCleanup {
-                        Button(action: onCleanup) {
-                            Label("End of Month Cleanup", systemImage: "arrow.3.trianglepath")
-                        }
-                    }
+                Button(action: onNewGroup) {
+                    Label("New Group", systemImage: "folder")
                 }
+                .accessibilityLabel("New Category Group")
+
+                Button(action: onToggleReorder) {
+                    Label(
+                        isReordering ? "Done Reordering" : "Reorder Items",
+                        systemImage: isReordering ? "checkmark" : "arrow.up.arrow.down"
+                    )
+                }
+                .accessibilityIdentifier("budgetOptions.reorder")
             }
         } label: {
-            Image(systemName: "sparkles")
+            Image("ActualiMark")
+                .renderingMode(.template)
+                .resizable()
+                .scaledToFit()
+                .frame(width: 23, height: 23)
         }
-        .accessibilityLabel("Budget actions")
+        .accessibilityLabel("Actuali menu")
         .accessibilityIdentifier("budget.actionsMenu")
     }
 }
@@ -60,12 +45,11 @@ struct BudgetActionsMenu: View {
     NavigationStack {
         Text("Budget")
             .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
+                ToolbarItem(placement: .topBarLeading) {
                     BudgetActionsMenu(
-                        onCopyPreviousMonthBudget: {},
-                        onSetBudgetsToZero: {},
-                        onTemplateAction: { _ in },
-                        onCleanup: {}
+                        onNewCategory: {},
+                        onNewGroup: {},
+                        onToggleReorder: {}
                     )
                 }
             }

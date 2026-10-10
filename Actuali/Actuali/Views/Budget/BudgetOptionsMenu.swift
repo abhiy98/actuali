@@ -35,28 +35,17 @@ enum BudgetCategoryFilter: String, CaseIterable, Identifiable {
 /// visible check-in strip rather than in here; only whether that strip is
 /// shown is a view option.
 ///
-/// Budget actions (copy last month, set to zero, templates, cleanup) live in
-/// the separate `BudgetActionsMenu` beside this button.
-///
-/// New Category / New Group used to be their own "+" toolbar button next to
-/// this menu. Creation is still not a "how this looks" preference, but it's
-/// the only other trailing-edge control the screen had, so folding it in here
-/// keeps the toolbar down to one button; it sits in its own section at the
-/// top, above the view options, so it reads as the odd one out rather than
-/// blending into the layout controls beneath it.
+/// The ellipsis menu contains display preferences and optional goal-template actions.
+/// Creation and reordering live behind the Actuali-mark menu on the leading side.
 struct BudgetOptionsMenu: View {
     @EnvironmentObject private var budgetStore: BudgetStore
 
-    /// nil when no budget is loaded — there's nothing to create a category or
-    /// group into yet.
-    var onNewCategory: (() -> Void)?
-    /// A category needs a group to live in; false disables the action without
-    /// hiding it, matching how the old "+" menu behaved.
-    var canAddCategory = true
-    var onNewGroup: (() -> Void)?
-    /// Turns reorder mode on or off (nil hides the item).
-    var onToggleReorder: (() -> Void)?
-    var isReordering = false
+    /// Month-level budget actions used to live in a separate toolbar menu.
+    var onCopyPreviousMonthBudget: (() -> Void)?
+    var onSetBudgetsToZero: (() -> Void)?
+    /// Template actions stay visible, but are disabled until goal templates are enabled.
+    var onTemplateAction: ((BudgetStore.GoalTemplateAction) -> Void)?
+    var onCleanup: (() -> Void)?
 
     /// Group actions are omitted when no budget is loaded — there are no
     /// groups to act on.
@@ -65,27 +54,16 @@ struct BudgetOptionsMenu: View {
 
     var body: some View {
         Menu {
-            Section {
-                if let onNewCategory {
-                    Button(action: onNewCategory) {
-                        Label("New Category", systemImage: "tag")
+            if let onCopyPreviousMonthBudget, let onSetBudgetsToZero {
+                Section {
+                    Button(action: onCopyPreviousMonthBudget) {
+                        Label("Copy last month's budget", systemImage: "doc.on.doc")
                     }
-                    .disabled(!canAddCategory)
-                }
-                if let onNewGroup {
-                    Button(action: onNewGroup) {
-                        Label("New Group", systemImage: "folder")
+                    .accessibilityIdentifier("budget.copyPreviousMonthBudget")
+
+                    Button(action: onSetBudgetsToZero) {
+                        Label("Set budgets to zero", systemImage: "0.circle")
                     }
-                    .accessibilityLabel("New Category Group")
-                }
-                if let onToggleReorder {
-                    Button(action: onToggleReorder) {
-                        Label(
-                            isReordering ? "Done Reordering" : "Reorder Items",
-                            systemImage: isReordering ? "checkmark" : "arrow.up.arrow.down"
-                        )
-                    }
-                    .accessibilityIdentifier("budgetOptions.reorder")
                 }
             }
 
@@ -96,6 +74,35 @@ struct BudgetOptionsMenu: View {
                     .tag(BudgetDisplayStyle.compact)
             }
             .pickerStyle(.inline)
+
+            if let onTemplateAction {
+                Section {
+                    Button {
+                        onTemplateAction(.check)
+                    } label: {
+                        Label("Check Templates", systemImage: "checkmark.seal")
+                    }
+                    .disabled(!budgetStore.goalTemplatesEnabled)
+                    Button {
+                        onTemplateAction(.apply)
+                    } label: {
+                        Label("Apply Budget Template", systemImage: "wand.and.stars")
+                    }
+                    .disabled(!budgetStore.goalTemplatesEnabled)
+                    Button {
+                        onTemplateAction(.overwrite)
+                    } label: {
+                        Label("Overwrite with Budget Template", systemImage: "wand.and.stars.inverse")
+                    }
+                    .disabled(!budgetStore.goalTemplatesEnabled)
+                    if let onCleanup {
+                        Button(action: onCleanup) {
+                            Label("End of Month Cleanup", systemImage: "arrow.3.trianglepath")
+                        }
+                        .disabled(!budgetStore.goalTemplatesEnabled)
+                    }
+                }
+            }
 
             Section {
                 Toggle(isOn: budgetStore.budgetDisplayStyle == .clean
@@ -154,7 +161,6 @@ struct BudgetOptionsMenu: View {
             Image(systemName: "ellipsis.circle")
         }
         .accessibilityLabel("Budget options")
-        .accessibilityHint("Create categories and groups, change layout and display options")
     }
 }
 
@@ -164,8 +170,10 @@ struct BudgetOptionsMenu: View {
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     BudgetOptionsMenu(
-                        onNewCategory: {},
-                        onNewGroup: {},
+                        onCopyPreviousMonthBudget: {},
+                        onSetBudgetsToZero: {},
+                        onTemplateAction: { _ in },
+                        onCleanup: {},
                         expandAllGroups: {},
                         collapseAllGroups: {}
                     )
