@@ -26,6 +26,7 @@ struct LogTransactionIntentTests {
         let replayGuard = LogTransactionReplayGuard(duplicateWindow: 3)
         let now = Date(timeIntervalSince1970: 1_000)
         let original = LogTransactionReplayKey(
+            budgetId: "budget-1",
             accountId: "account-1",
             amountCents: -450,
             rawPayee: "SQ * Blue Bottle #123",
@@ -36,6 +37,7 @@ struct LogTransactionIntentTests {
             cleared: true
         )
         let repeated = LogTransactionReplayKey(
+            budgetId: "budget-1",
             accountId: "account-1",
             amountCents: -450,
             rawPayee: "Blue Bottle",
@@ -57,6 +59,7 @@ struct LogTransactionIntentTests {
         let replayGuard = LogTransactionReplayGuard()
         let now = Date(timeIntervalSince1970: 1_000)
         let key = LogTransactionReplayKey(
+            budgetId: "budget-1",
             accountId: "account-1",
             amountCents: -450,
             rawPayee: "Blue Bottle",
@@ -67,6 +70,7 @@ struct LogTransactionIntentTests {
             cleared: true
         )
         let otherAccount = LogTransactionReplayKey(
+            budgetId: "budget-1",
             accountId: "account-2",
             amountCents: -450,
             rawPayee: "Blue Bottle",
@@ -77,8 +81,31 @@ struct LogTransactionIntentTests {
             cleared: true
         )
         let otherAmount = LogTransactionReplayKey(
+            budgetId: "budget-1",
             accountId: "account-1",
             amountCents: -550,
+            rawPayee: "Blue Bottle",
+            notes: nil,
+            categoryId: nil,
+            date: nil,
+            isIncome: false,
+            cleared: true
+        )
+        let otherDate = LogTransactionReplayKey(
+            budgetId: "budget-1",
+            accountId: "account-1",
+            amountCents: -450,
+            rawPayee: "Blue Bottle",
+            notes: nil,
+            categoryId: nil,
+            date: Date(timeIntervalSince1970: 1_700_000_060),
+            isIncome: false,
+            cleared: true
+        )
+        let otherBudget = LogTransactionReplayKey(
+            budgetId: "budget-2",
+            accountId: "account-1",
+            amountCents: -450,
             rawPayee: "Blue Bottle",
             notes: nil,
             categoryId: nil,
@@ -92,6 +119,8 @@ struct LogTransactionIntentTests {
         #expect(replayGuard.begin(key, now: now.addingTimeInterval(0.1)))
         #expect(replayGuard.begin(otherAccount, now: now.addingTimeInterval(0.1)))
         #expect(replayGuard.begin(otherAmount, now: now.addingTimeInterval(0.1)))
+        #expect(replayGuard.begin(otherDate, now: now.addingTimeInterval(0.1)))
+        #expect(replayGuard.begin(otherBudget, now: now.addingTimeInterval(0.1)))
     }
 
     @Test(arguments: [

@@ -1,18 +1,21 @@
 import AppIntents
 import Foundation
 
-/// Identifies equivalent log attempts from the fields the intent will write.
+/// Identifies equivalent log attempts while preserving any event-date precision
+/// the shortcut supplies (the ledger itself stores only a calendar day).
 struct LogTransactionReplayKey: Hashable {
+    let budgetId: String
     let accountId: String
     let amountCents: Int
     let normalizedPayee: String
     let notes: String?
     let categoryId: String?
-    let date: Int?
+    let date: Date?
     let isIncome: Bool
     let cleared: Bool
 
     init(
+        budgetId: String,
         accountId: String,
         amountCents: Int,
         rawPayee: String,
@@ -22,12 +25,13 @@ struct LogTransactionReplayKey: Hashable {
         isIncome: Bool,
         cleared: Bool
     ) {
+        self.budgetId = budgetId
         self.accountId = accountId
         self.amountCents = amountCents
         normalizedPayee = MerchantNormalizer.normalize(rawPayee).lowercased()
         self.notes = notes
         self.categoryId = categoryId
-        self.date = date.map { Transaction.yyyymmdd(from: $0) }
+        self.date = date
         self.isIncome = isIncome
         self.cleared = cleared
     }
@@ -176,7 +180,7 @@ struct LogTransactionIntent: AppIntent {
         // doesn't fail with "Sync not configured".
         await store.ensureBudgetReady()
 
-        guard store.currentBudgetId != nil else {
+        guard let budgetId = store.currentBudgetId else {
             await reportFailure(.noBudgetLoaded)
             throw LogTransactionError.noBudgetLoaded
         }
@@ -214,6 +218,7 @@ struct LogTransactionIntent: AppIntent {
         let transactionNotes = trimmedNotes.isEmpty ? nil : trimmedNotes
         let resolvedDate = date ?? Date()
         let replayKey = LogTransactionReplayKey(
+            budgetId: budgetId,
             accountId: activeAccount.id,
             amountCents: amountCents,
             rawPayee: payee,
