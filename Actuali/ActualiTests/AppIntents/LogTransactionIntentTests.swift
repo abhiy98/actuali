@@ -22,6 +22,78 @@ struct LogTransactionIntentTests {
         #expect(LogTransactionIntent().showConfirmation == false)
     }
 
+    @MainActor @Test func replayGuardSuppressesConcurrentAndRecentlyCompletedInvocations() {
+        let replayGuard = LogTransactionReplayGuard(duplicateWindow: 3)
+        let now = Date(timeIntervalSince1970: 1_000)
+        let original = LogTransactionReplayKey(
+            accountId: "account-1",
+            amountCents: -450,
+            rawPayee: "SQ * Blue Bottle #123",
+            notes: nil,
+            categoryId: nil,
+            date: nil,
+            isIncome: false,
+            cleared: true
+        )
+        let repeated = LogTransactionReplayKey(
+            accountId: "account-1",
+            amountCents: -450,
+            rawPayee: "Blue Bottle",
+            notes: nil,
+            categoryId: nil,
+            date: nil,
+            isIncome: false,
+            cleared: true
+        )
+
+        #expect(replayGuard.begin(original, now: now))
+        #expect(!replayGuard.begin(repeated, now: now.addingTimeInterval(0.5)))
+        replayGuard.finish(original, succeeded: true, now: now.addingTimeInterval(1))
+        #expect(!replayGuard.begin(repeated, now: now.addingTimeInterval(2)))
+        #expect(replayGuard.begin(repeated, now: now.addingTimeInterval(4)))
+    }
+
+    @MainActor @Test func replayGuardAllowsRetryAfterFailureAndKeepsDistinctPayments() {
+        let replayGuard = LogTransactionReplayGuard()
+        let now = Date(timeIntervalSince1970: 1_000)
+        let key = LogTransactionReplayKey(
+            accountId: "account-1",
+            amountCents: -450,
+            rawPayee: "Blue Bottle",
+            notes: nil,
+            categoryId: nil,
+            date: nil,
+            isIncome: false,
+            cleared: true
+        )
+        let otherAccount = LogTransactionReplayKey(
+            accountId: "account-2",
+            amountCents: -450,
+            rawPayee: "Blue Bottle",
+            notes: nil,
+            categoryId: nil,
+            date: nil,
+            isIncome: false,
+            cleared: true
+        )
+        let otherAmount = LogTransactionReplayKey(
+            accountId: "account-1",
+            amountCents: -550,
+            rawPayee: "Blue Bottle",
+            notes: nil,
+            categoryId: nil,
+            date: nil,
+            isIncome: false,
+            cleared: true
+        )
+
+        #expect(replayGuard.begin(key, now: now))
+        replayGuard.finish(key, succeeded: false, now: now)
+        #expect(replayGuard.begin(key, now: now.addingTimeInterval(0.1)))
+        #expect(replayGuard.begin(otherAccount, now: now.addingTimeInterval(0.1)))
+        #expect(replayGuard.begin(otherAmount, now: now.addingTimeInterval(0.1)))
+    }
+
     @Test(arguments: [
         (Locale(identifier: "en_US"), "Amount must be greater than 0 (received \"12\").", "Couldn't save transaction. Tap to retry. (disk full)"),
         (Locale(identifier: "fr_FR"), "Le montant doit être supérieur à 0 (valeur reçue : \"12\").", "Impossible d'enregistrer la transaction. Touchez pour réessayer. (disk full)"),

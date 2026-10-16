@@ -1,6 +1,82 @@
 import AppIntents
 import Foundation
 
+/// Identifies equivalent log attempts from the fields the intent will write.
+struct LogTransactionReplayKey: Hashable {
+    let accountId: String
+    let amountCents: Int
+    let normalizedPayee: String
+    let notes: String?
+    let categoryId: String?
+    let date: Int?
+    let isIncome: Bool
+    let cleared: Bool
+
+    init(
+        accountId: String,
+        amountCents: Int,
+        rawPayee: String,
+        notes: String?,
+        categoryId: String?,
+        date: Date?,
+        isIncome: Bool,
+        cleared: Bool
+    ) {
+        self.accountId = accountId
+        self.amountCents = amountCents
+        normalizedPayee = MerchantNormalizer.normalize(rawPayee).lowercased()
+        self.notes = notes
+        self.categoryId = categoryId
+        self.date = date.map { Transaction.yyyymmdd(from: $0) }
+        self.isIncome = isIncome
+        self.cleared = cleared
+    }
+}
+
+/// Suppresses a rapid repeat while the first write is in flight or just completed.
+///
+/// ponytail: Wallet's App Intent inputs expose no documented transaction ID.
+/// A short process-local window is the smallest mitigation; if duplicates cross
+/// process boundaries, use a stable Wallet event ID rather than broader matching.
+@MainActor
+final class LogTransactionReplayGuard {
+    private struct Entry {
+        var completedAt: Date?
+    }
+
+    private var entries: [LogTransactionReplayKey: Entry] = [:]
+    private let duplicateWindow: TimeInterval
+
+    init(duplicateWindow: TimeInterval = 3) {
+        self.duplicateWindow = duplicateWindow
+    }
+
+    func begin(_ key: LogTransactionReplayKey, now: Date = Date()) -> Bool {
+        entries = entries.filter { _, entry in
+            guard let completedAt = entry.completedAt else { return true }
+            let elapsed = now.timeIntervalSince(completedAt)
+            return elapsed >= 0 && elapsed < duplicateWindow
+        }
+        guard !entries.keys.contains(key) else { return false }
+        entries[key] = Entry(completedAt: nil)
+        return true
+    }
+
+    func finish(_ key: LogTransactionReplayKey, succeeded: Bool, now: Date = Date()) {
+        guard entries[key] != nil else { return }
+        if succeeded {
+            entries[key] = Entry(completedAt: now)
+        } else {
+            entries.removeValue(forKey: key)
+        }
+    }
+}
+
+@MainActor
+private enum LogTransactionReplayProtection {
+    static let replayGuard = LogTransactionReplayGuard()
+}
+
 struct LogTransactionIntent: AppIntent {
     static let title: LocalizedStringResource = "Log Transaction"
     static let description = IntentDescription(
@@ -135,19 +211,35 @@ struct LogTransactionIntent: AppIntent {
 
         // Delegate to logger.
         let trimmedNotes = notes.trimmingCharacters(in: .whitespacesAndNewlines)
+        let transactionNotes = trimmedNotes.isEmpty ? nil : trimmedNotes
         let resolvedDate = date ?? Date()
+        let replayKey = LogTransactionReplayKey(
+            accountId: activeAccount.id,
+            amountCents: amountCents,
+            rawPayee: payee,
+            notes: transactionNotes,
+            categoryId: activeAccount.offBudget ? nil : category?.id,
+            date: date,
+            isIncome: isIncome,
+            cleared: cleared
+        )
+        guard LogTransactionReplayProtection.replayGuard.begin(replayKey) else {
+            // The first invocation owns the write and its notification.
+            return Self.result(dialogText: "", showConfirmation: false)
+        }
 
         do {
             let written = try await TransactionLogger(store: .shared).logTransaction(
                 accountId: activeAccount.id,
                 amountCents: amountCents,
                 rawMerchant: payee,
-                notes: trimmedNotes.isEmpty ? nil : trimmedNotes,
+                notes: transactionNotes,
                 date: resolvedDate,
                 cleared: cleared,
                 // Off-budget accounts carry no category, matching the add form.
                 categoryId: activeAccount.offBudget ? nil : category?.id
             )
+            LogTransactionReplayProtection.replayGuard.finish(replayKey, succeeded: true)
 
             // The row is safely on disk either way, but an unreachable server
             // means it only exists here. Say so rather than reporting a plain
@@ -180,6 +272,7 @@ struct LogTransactionIntent: AppIntent {
             )
             return Self.result(dialogText: dialogText, showConfirmation: showConfirmation)
         } catch {
+            LogTransactionReplayProtection.replayGuard.finish(replayKey, succeeded: false)
             let mapped = LogTransactionError.wrapping(error)
             await reportFailure(mapped)
             throw mapped
