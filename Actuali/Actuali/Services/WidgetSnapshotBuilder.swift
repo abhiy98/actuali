@@ -14,6 +14,7 @@ extension BudgetStore {
             from: month.categoryBudgets,
             month: month.month,
             balancesHidden: hideBalances,
+            maskCategoryNames: shouldHideNamesWithBalances,
             generatedAt: Date(),
             format: displayBalance
         )
@@ -52,6 +53,7 @@ extension WidgetSnapshot {
         from budgets: [CategoryBudget],
         month: String,
         balancesHidden: Bool,
+        maskCategoryNames: Bool = false,
         generatedAt: Date,
         format: (Int) -> String
     ) -> WidgetSnapshot {
@@ -61,12 +63,15 @@ extension WidgetSnapshot {
             balancesHidden: balancesHidden,
             categories: budgets
                 .sorted { ($0.groupSortOrder, $0.categorySortOrder) < ($1.groupSortOrder, $1.categorySortOrder) }
-                .map {
+                .enumerated()
+                .map { index, budget in
                     WidgetCategoryBalance(
-                        id: $0.categoryId,
-                        name: $0.categoryName,
-                        available: $0.available,
-                        formattedAvailable: format($0.available)
+                        id: budget.categoryId,
+                        name: maskCategoryNames
+                            ? String(format: String(localized: "Category %d"), index + 1)
+                            : budget.categoryName,
+                        available: budget.available,
+                        formattedAvailable: format(budget.available)
                     )
                 }
         )

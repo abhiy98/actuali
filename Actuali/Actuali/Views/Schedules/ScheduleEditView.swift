@@ -130,7 +130,7 @@ struct ScheduleEditView: View {
                     Picker(String(localized: "Transfer to"), selection: $transferToAccountId) {
                         Text(String(localized: "Select an account")).tag(String?.none)
                         ForEach(transferEligibleAccounts) { account in
-                            Text(account.name).tag(String?.some(account.id))
+                            Text(budgetStore.displayAccountName(account)).tag(String?.some(account.id))
                         }
                     }
                 } else {
@@ -141,7 +141,7 @@ struct ScheduleEditView: View {
                 Picker(String(localized: "Account"), selection: $accountId) {
                     Text(String(localized: "Select an account")).tag(String?.none)
                     ForEach(openAccounts) { account in
-                        Text(account.name).tag(String?.some(account.id))
+                        Text(budgetStore.displayAccountName(account)).tag(String?.some(account.id))
                     }
                 }
                 .onChange(of: accountId) { _, newValue in

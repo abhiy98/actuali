@@ -106,6 +106,10 @@ struct DashboardView: View {
             // Keyed to dataVersion so widgets recompute when transactions
             // change anywhere in the app (edits on other tabs, sync,
             // scheduled posts) — not just on first appearance.
+            .onChange(of: budgetStore.shouldHideNamesWithBalances) { _, _ in
+                // Recompute report labels even when transactions themselves are unchanged.
+                reportDataVersion += 1
+            }
             .task(id: currentLoadRequest) {
                 await loadTransactions(request: currentLoadRequest)
             }
@@ -247,6 +251,22 @@ struct DashboardView: View {
             categoryGroupNames: Dictionary(
                 budgetStore.categoryGroups.map { ($0.id, $0.name) },
                 uniquingKeysWith: { first, _ in first }
+            ),
+            categoryNames: Dictionary(
+                budgetStore.categoryGroups.flatMap(\.categories).map { ($0.id, $0.name) },
+                uniquingKeysWith: { first, _ in first }
+            ),
+            transactionCategoryNames: Dictionary(
+                (reportTransactions ?? []).compactMap { transaction in
+                    transaction.categoryName.map { (transaction.id, $0) }
+                },
+                uniquingKeysWith: { first, _ in first }
+            ),
+            transactionPayeeNames: Dictionary(
+                (reportTransactions ?? []).compactMap { transaction in
+                    transaction.payeeName.map { (transaction.id, $0) }
+                },
+                uniquingKeysWith: { first, _ in first }
             )
         )
     }
@@ -255,10 +275,52 @@ struct DashboardView: View {
     private func widgetView(for widget: DashboardWidget) -> some View {
         // Capture values on the main actor; computation must not read the store.
         let conditionsContext = conditionsContext
-        let accounts = budgetStore.accounts
-        let categoryGroups = budgetStore.categoryGroups
+        let maskNames = budgetStore.shouldHideNamesWithBalances
+        let accounts = budgetStore.accounts.map { account -> Account in
+            guard maskNames else { return account }
+            var displayAccount = account
+            displayAccount.name = budgetStore.displayAccountName(account)
+            return displayAccount
+        }
+        let categoryGroups = budgetStore.categoryGroups.map { group -> CategoryGroup in
+            guard maskNames else { return group }
+            var displayGroup = group
+            displayGroup.name = budgetStore.displayCategoryGroupName(id: group.id, fallback: group.name)
+            displayGroup.categories = group.categories.map { category in
+                var displayCategory = category
+                displayCategory.name = budgetStore.displayCategoryName(id: category.id, fallback: category.name)
+                return displayCategory
+            }
+            return displayGroup
+        }
         let categories = categoryGroups.flatMap(\.categories)
-        let payees = budgetStore.payees
+        let transactions = reportTransactions?.map { transaction -> Transaction in
+            guard maskNames else { return transaction }
+            var displayTransaction = transaction
+            displayTransaction.categoryName = budgetStore.displayCategoryName(
+                id: transaction.categoryId,
+                fallback: transaction.categoryName
+            )
+            displayTransaction.splitPortions = transaction.splitPortions?.map { portion in
+                var displayPortion = portion
+                if let name = portion.categoryName {
+                    displayPortion.categoryName = budgetStore.displayCategoryName(matching: name)
+                }
+                return displayPortion
+            }
+            if let transferAccountId = transaction.transferAcct {
+                displayTransaction.payeeName = "\(String(localized: "Transfer")): \(budgetStore.displayAccountName(id: transferAccountId, fallback: ""))"
+            } else if transaction.transferId != nil {
+                displayTransaction.payeeName = String(localized: "Transfer")
+            }
+            return displayTransaction
+        }
+        let payees = budgetStore.payees.map { payee -> Payee in
+            guard maskNames, let transferAccountId = payee.transferAccountId else { return payee }
+            var displayPayee = payee
+            displayPayee.name = "\(String(localized: "Transfer")): \(budgetStore.displayAccountName(id: transferAccountId, fallback: ""))"
+            return displayPayee
+        }
         let reportBudgets = reportBudgets
         let customReportConfigs = customReportConfigs
         let firstDayOfWeekIdx = firstDayOfWeekIdx
@@ -268,19 +330,19 @@ struct DashboardView: View {
         let today = reportDate
         switch widget {
         case .summary(_, let meta):
-            WidgetCard(transactions: reportTransactions, dataVersion: reportDataVersion, loadingHeight: 80) { transactions in
+            WidgetCard(transactions: transactions, dataVersion: reportDataVersion, loadingHeight: 80) { transactions in
                 SummaryEngine.compute(meta: meta, transactions: transactions, today: today, context: conditionsContext)
             } content: { data in
                 SummaryWidgetView(displayName: widget.displayName, data: data)
             }
         case .netWorth(_, let meta):
-            WidgetCard(transactions: reportTransactions, dataVersion: reportDataVersion, loadingHeight: 180) { transactions in
+            WidgetCard(transactions: transactions, dataVersion: reportDataVersion, loadingHeight: 180) { transactions in
                 NetWorthEngine.compute(meta: meta, transactions: transactions, today: today, context: conditionsContext)
             } content: { data in
                 NetWorthWidgetView(displayName: widget.displayName, data: data)
             }
         case .cashFlow(_, let meta):
-            WidgetCard(transactions: reportTransactions, dataVersion: reportDataVersion, loadingHeight: 200) { transactions in
+            WidgetCard(transactions: transactions, dataVersion: reportDataVersion, loadingHeight: 200) { transactions in
                 CashFlowEngine.compute(
                     meta: meta,
                     transactions: transactions,
@@ -292,7 +354,7 @@ struct DashboardView: View {
                 CashFlowWidgetView(displayName: widget.displayName, data: data)
             }
         case .spending(_, let meta):
-            WidgetCard(transactions: reportTransactions, dataVersion: reportDataVersion, loadingHeight: 120) { transactions in
+            WidgetCard(transactions: transactions, dataVersion: reportDataVersion, loadingHeight: 120) { transactions in
                 SpendingEngine.compute(meta: meta, transactions: Self.spendingScope(transactions, offBudget: conditionsContext.offBudgetAccountIds, income: Set(categories.filter(\.isIncome).map(\.id))),
                                        budgets: reportBudgets.entries,
                                        categories: categories,
@@ -308,7 +370,7 @@ struct DashboardView: View {
         case .markdown(_, let meta):
             MarkdownWidgetView(meta: meta)
         case .ageOfMoney(_, let meta):
-            WidgetCard(transactions: reportTransactions, dataVersion: reportDataVersion, loadingHeight: 160) { transactions in
+            WidgetCard(transactions: transactions, dataVersion: reportDataVersion, loadingHeight: 160) { transactions in
                 AgeOfMoneyEngine.compute(
                     meta: meta,
                     transactions: transactions,
@@ -320,13 +382,13 @@ struct DashboardView: View {
                 AgeOfMoneyWidgetView(displayName: widget.displayName, data: data)
             }
         case .formula(_, let meta):
-            WidgetCard(transactions: reportTransactions, dataVersion: reportDataVersion, loadingHeight: 100) { transactions in
+            WidgetCard(transactions: transactions, dataVersion: reportDataVersion, loadingHeight: 100) { transactions in
                 FormulaEngine.compute(meta: meta, transactions: transactions, today: today, context: conditionsContext)
             } content: { result in
                 FormulaWidgetView(displayName: widget.displayName, result: result)
             }
         case .customReport(_, let meta):
-            WidgetCard(transactions: reportTransactions, dataVersion: reportDataVersion, loadingHeight: 200) { transactions in
+            WidgetCard(transactions: transactions, dataVersion: reportDataVersion, loadingHeight: 200) { transactions in
                 CustomReportEngine.compute(
                     config: (meta?.id).flatMap { customReportConfigs[$0] },
                     transactions: transactions,
@@ -346,7 +408,7 @@ struct DashboardView: View {
                 CustomReportWidgetView(data: data)
             }
         case .calendar(_, let meta):
-            WidgetCard(transactions: reportTransactions, dataVersion: reportDataVersion, loadingHeight: 200) { transactions in
+            WidgetCard(transactions: transactions, dataVersion: reportDataVersion, loadingHeight: 200) { transactions in
                 CalendarEngine.compute(
                     meta: meta,
                     transactions: transactions,
@@ -358,7 +420,7 @@ struct DashboardView: View {
                 CalendarWidgetView(displayName: widget.displayName, data: data)
             }
         case .crossover(_, let meta):
-            WidgetCard(transactions: reportTransactions, dataVersion: reportDataVersion, loadingHeight: 200) { transactions in
+            WidgetCard(transactions: transactions, dataVersion: reportDataVersion, loadingHeight: 200) { transactions in
                 CrossoverEngine.compute(
                     meta: meta,
                     transactions: transactions,
@@ -370,7 +432,7 @@ struct DashboardView: View {
                 CrossoverWidgetView(displayName: widget.displayName, data: data)
             }
         case .budgetAnalysis(_, let meta):
-            WidgetCard(transactions: reportTransactions, dataVersion: reportDataVersion, loadingHeight: 200) { transactions in
+            WidgetCard(transactions: transactions, dataVersion: reportDataVersion, loadingHeight: 200) { transactions in
                 BudgetAnalysisEngine.compute(
                     meta: meta,
                     transactions: transactions,
@@ -384,7 +446,7 @@ struct DashboardView: View {
                 BudgetAnalysisWidgetView(displayName: widget.displayName, data: data)
             }
         case .sankey(_, let meta):
-            WidgetCard(transactions: reportTransactions, dataVersion: reportDataVersion, loadingHeight: 240) { transactions in
+            WidgetCard(transactions: transactions, dataVersion: reportDataVersion, loadingHeight: 240) { transactions in
                 SankeyEngine.compute(
                     meta: meta,
                     transactions: transactions,
@@ -404,7 +466,7 @@ struct DashboardView: View {
             }
         case .balanceForecast(_, let meta):
             let meta = forecastMeta(meta)
-            WidgetCard(transactions: reportTransactions, dataVersion: reportDataVersion, loadingHeight: 200) { transactions in
+            WidgetCard(transactions: transactions, dataVersion: reportDataVersion, loadingHeight: 200) { transactions in
                 BalanceForecastEngine.compute(
                     meta: meta,
                     transactions: transactions,
@@ -424,7 +486,7 @@ struct DashboardView: View {
                 BalanceForecastWidgetView(displayName: widget.displayName, data: data)
             }
         case .monteCarlo(_, let meta):
-            WidgetCard(transactions: reportTransactions, dataVersion: reportDataVersion, loadingHeight: 220) { _ in
+            WidgetCard(transactions: transactions, dataVersion: reportDataVersion, loadingHeight: 220) { _ in
                 MonteCarloEngine.compute(
                     meta: meta,
                     accountBalances: Dictionary(

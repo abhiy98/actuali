@@ -54,7 +54,7 @@ struct TransactionAutomationSettingsView: View {
                     Picker(String(localized: "Default Account"), selection: $budgetStore.defaultAccountId) {
                         Text(String(localized: "None")).tag(nil as String?)
                         ForEach(budgetStore.accounts.filter { !$0.closed }) { account in
-                            Text(account.name).tag(account.id as String?)
+                            Text(budgetStore.displayAccountName(account)).tag(account.id as String?)
                         }
                     }
                 } else {

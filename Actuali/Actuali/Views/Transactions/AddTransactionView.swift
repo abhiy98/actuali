@@ -360,7 +360,7 @@ struct AddTransactionView: View {
     /// The payee row's text: the other account for a transfer, with the
     /// direction the sign gives it.
     private var transferPayeeText: String {
-        guard let partner = budgetStore.accounts.first(where: { $0.id == transferToAccountId })?.name else {
+        guard let partner = budgetStore.accounts.first(where: { $0.id == transferToAccountId }).map({ budgetStore.displayAccountName($0) }) else {
             return String(localized: "Select account", locale: locale)
         }
         let direction = isInflow
@@ -447,7 +447,7 @@ struct AddTransactionView: View {
         }
         for group in budgetStore.categoryGroups {
             if let match = group.categories.first(where: { $0.id == id }) {
-                return match.name
+                return budgetStore.displayCategoryName(id: match.id, fallback: match.name)
             }
         }
         return String(localized: AddTransactionLocalization.none, locale: locale)
@@ -575,7 +575,7 @@ struct AddTransactionView: View {
                 Section {
                     Picker(selection: $selectedAccountId) {
                         ForEach(orderedOpenAccounts) { account in
-                            Text(account.name).tag(account.id)
+                            Text(budgetStore.displayAccountName(account)).tag(account.id)
                         }
                     } label: {
                         Label(String(localized: AddTransactionLocalization.account, locale: locale), systemImage: "building.columns")
@@ -981,8 +981,8 @@ struct AddTransactionView: View {
         case .expense: return String(localized: AddTransactionLocalization.outflow, locale: locale)
         case .income: return String(localized: AddTransactionLocalization.inflow, locale: locale)
         case .transfer:
-            let ownAccount = budgetStore.accounts.first { $0.id == selectedAccountId }?.name
-            let partnerAccount = budgetStore.accounts.first { $0.id == transferToAccountId }?.name
+            let ownAccount = budgetStore.accounts.first { $0.id == selectedAccountId }.map { budgetStore.displayAccountName($0) }
+            let partnerAccount = budgetStore.accounts.first { $0.id == transferToAccountId }.map { budgetStore.displayAccountName($0) }
             return Self.transferDirectionDescription(
                 from: isInflow ? partnerAccount : ownAccount,
                 to: isInflow ? ownAccount : partnerAccount,
@@ -1949,7 +1949,7 @@ struct CategoryPickerView: View {
             }
 
             ForEach(filteredGroups, id: \.id) { group in
-                Section(group.name) {
+                Section(budgetStore.displayCategoryGroupName(id: group.id, fallback: group.name)) {
                     ForEach(group.categories) { category in
                         Button {
                             selectedCategoryId = category.id
@@ -1957,7 +1957,7 @@ struct CategoryPickerView: View {
                             dismiss()
                         } label: {
                             HStack {
-                                Text(category.name)
+                                Text(budgetStore.displayCategoryName(id: category.id, fallback: category.name))
                                     .foregroundStyle(.primary)
                                 Spacer()
                                 if selectedCategoryId == category.id {

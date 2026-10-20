@@ -8,6 +8,9 @@ enum ConditionsFilter {
         var accountNames: [String: String] = [:] // account id -> name
         var categoryGroupIds: [String: String] = [:] // category id -> group id
         var categoryGroupNames: [String: String] = [:] // group id -> name
+        var categoryNames: [String: String] = [:] // category id -> original name
+        var transactionCategoryNames: [String: String] = [:] // transaction id -> original name
+        var transactionPayeeNames: [String: String] = [:] // transaction id -> original name
 
         static let empty = Context()
     }
@@ -191,10 +194,13 @@ enum ConditionsFilter {
         case "contains", "doesNotContain", "matches":
             // Id fields match against the referenced row's *name*.
             let name: String? = switch c.field {
-            case "category": tx.categoryName
+            case "category":
+                context.transactionCategoryNames[tx.id]
+                    ?? tx.categoryId.flatMap { context.categoryNames[$0] }
+                    ?? tx.categoryName
             case "category_group": txId.flatMap { context.categoryGroupNames[$0] }
             case "account": context.accountNames[tx.accountId]
-            default: tx.payeeName
+            default: context.transactionPayeeNames[tx.id] ?? tx.payeeName
             }
             return matchText(name, op: c.op, value: decodeString(c.value))
         case "onBudget":

@@ -5,13 +5,14 @@ import Testing
 @MainActor
 struct ConditionsFilterTests {
     private func makeTransaction(
+        id: String = UUID().uuidString,
         category: String? = nil,
         account: String = "acc1",
         amount: Int = -1000,
         payee: String? = nil
     ) -> Transaction {
         Transaction(
-            id: UUID().uuidString,
+            id: id,
             accountId: account,
             date: 20_260_301,
             amount: amount,
@@ -133,6 +134,36 @@ struct ConditionsFilterTests {
             stringArrayValue: ["income-salary", "income-bonus"]
         )
         #expect(!ConditionsFilter.matches(transaction: tx, conditions: [cond], op: "and"))
+    }
+
+    @Test func categoryNameConditionsUseOriginalNamesWhenDisplayNamesAreMasked() {
+        var transaction = makeTransaction(id: "transaction-1", category: "groceries")
+        transaction.categoryName = "Category 1"
+        let condition = WidgetRuleCondition.makeMock(
+            op: "contains", field: "category", stringValue: "Groceries"
+        )
+
+        #expect(ConditionsFilter.matches(
+            transaction: transaction,
+            conditions: [condition],
+            op: "and",
+            context: .init(transactionCategoryNames: ["transaction-1": "Groceries"])
+        ))
+    }
+
+    @Test func payeeNameConditionsUseOriginalNamesWhenDisplayNamesAreMasked() {
+        var transaction = makeTransaction(id: "transaction-2")
+        transaction.payeeName = "Transfer"
+        let condition = WidgetRuleCondition.makeMock(
+            op: "contains", field: "payee", stringValue: "Checking"
+        )
+
+        #expect(ConditionsFilter.matches(
+            transaction: transaction,
+            conditions: [condition],
+            op: "and",
+            context: .init(transactionPayeeNames: ["transaction-2": "Transfer: Checking"])
+        ))
     }
 
     @Test func containsIsCaseInsensitive() {

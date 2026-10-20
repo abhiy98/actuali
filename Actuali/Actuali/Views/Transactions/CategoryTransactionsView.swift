@@ -257,7 +257,7 @@ struct CategoryTransactionsView: View {
             }
         }
         .readableWidth()
-        .navigationTitle(destination.categoryName)
+        .navigationTitle(budgetStore.displayCategoryName(id: destination.categoryId, fallback: destination.categoryName))
         .navigationBarTitleDisplayMode(.inline)
         .searchable(text: $searchText, placement: .navigationBarDrawer(displayMode: .always), prompt: "Search transactions")
         .task { await reload() }
@@ -276,7 +276,7 @@ struct CategoryTransactionsView: View {
         }) {
             NoteEditorView(
                 noteId: destination.categoryId,
-                title: destination.categoryName,
+                title: budgetStore.displayCategoryName(id: destination.categoryId, fallback: destination.categoryName),
                 note: note.text
             )
             .environmentObject(budgetStore)

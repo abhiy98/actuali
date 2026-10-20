@@ -189,6 +189,58 @@ struct WidgetSnapshotTests {
         #expect(store.read() == nil)
     }
 
+    @Test func makeMasksCategoryNamesWhenRequested() {
+        let budgets = [
+            makeBudget(id: "rent", name: "Rent", month: "2026-08"),
+            makeBudget(id: "food", name: "Groceries", month: "2026-08"),
+        ]
+        let snapshot = WidgetSnapshot.make(
+            from: budgets,
+            month: "2026-08",
+            balancesHidden: true,
+            maskCategoryNames: true,
+            generatedAt: Date()
+        ) { cents in "<\(cents)>" }
+
+        #expect(snapshot.categories.map(\.name) == ["Category 1", "Category 2"])
+    }
+
+    @Test @MainActor func publishMasksAndRestoresWidgetCategoryNames() throws {
+        let originalNamesPreference = UserDefaults.standard.object(forKey: "hideNamesWhenBalancesHidden")
+        let originalBalancesPreference = UserDefaults.standard.object(forKey: "hideBalances")
+        defer {
+            if let originalNamesPreference {
+                UserDefaults.standard.set(originalNamesPreference, forKey: "hideNamesWhenBalancesHidden")
+            } else {
+                UserDefaults.standard.removeObject(forKey: "hideNamesWhenBalancesHidden")
+            }
+            if let originalBalancesPreference {
+                UserDefaults.standard.set(originalBalancesPreference, forKey: "hideBalances")
+            } else {
+                UserDefaults.standard.removeObject(forKey: "hideBalances")
+            }
+        }
+
+        let budgetStore = BudgetStore.previewInstance()
+        let store = try makeStore()
+        budgetStore.widgetSnapshotStore = store
+        budgetStore.hideNamesWhenBalancesHidden = true
+        budgetStore.hideBalances = true
+        budgetStore.widgetBudgetMonth = BudgetMonth(
+            month: "2026-08",
+            categoryBudgets: [makeBudget(id: "dining", name: "Dining Out", month: "2026-08")]
+        )
+
+        budgetStore.publishWidgetSnapshot()
+
+        #expect(store.read()?.categories.map(\.name) == ["Category 1"])
+        #expect(store.read()?.categories.first?.formattedAvailable == BudgetStore.hiddenBalanceText)
+
+        budgetStore.hideBalances = false
+
+        #expect(store.read()?.categories.map(\.name) == ["Dining Out"])
+    }
+
     // MARK: - Building from category budgets
 
     @Test func makeSortsByGroupThenCategoryOrderAndFormats() {

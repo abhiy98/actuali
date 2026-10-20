@@ -151,7 +151,7 @@ struct NewCategorySheet: View {
                 Section {
                     Picker("Group", selection: $groupId) {
                         ForEach(selectableGroups) { group in
-                            Text(group.name).tag(group.id)
+                            Text(budgetStore.displayCategoryGroupName(id: group.id, fallback: group.name)).tag(group.id)
                         }
                     }
                 } footer: {

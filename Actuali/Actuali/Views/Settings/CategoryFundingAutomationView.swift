@@ -12,7 +12,10 @@ struct CategoryFundingAutomationView: View {
             .flatMap(\.categories)
             .filter { !$0.isIncome && !$0.hidden }
             .sorted {
-                $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending
+                budgetStore.displayCategoryName(id: $0.id, fallback: $0.name)
+                    .localizedCaseInsensitiveCompare(
+                        budgetStore.displayCategoryName(id: $1.id, fallback: $1.name)
+                    ) == .orderedAscending
             }
     }
 
@@ -22,7 +25,7 @@ struct CategoryFundingAutomationView: View {
                 Picker(String(localized: "Account"), selection: $configuration.accountId) {
                     Text(String(localized: "None")).tag(String?.none)
                     ForEach(budgetStore.accounts.filter { !$0.closed && !$0.offBudget }, id: \.id) { account in
-                        Text(account.name).tag(Optional(account.id))
+                        Text(budgetStore.displayAccountName(account)).tag(Optional(account.id))
                     }
                 }
                 .accessibilityIdentifier("categoryFunding.accountPicker")
@@ -42,7 +45,7 @@ struct CategoryFundingAutomationView: View {
                     Text(String(localized: "To Budget")).tag(CategoryFundingSource.toBudget)
 
                     ForEach(fundingCategories, id: \.id) { category in
-                        Text(category.name)
+                        Text(budgetStore.displayCategoryName(id: category.id, fallback: category.name))
                             .tag(CategoryFundingSource.category(category.id))
                     }
                 }

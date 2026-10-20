@@ -107,7 +107,7 @@ struct LoanPaymentView: View {
         Section {
             Picker(String(localized: "From"), selection: $fundingAccountId) {
                 ForEach(availableFundingAccounts) { funding in
-                    Text(funding.name).tag(funding.id)
+                    Text(budgetStore.displayAccountName(funding)).tag(funding.id)
                 }
             }
             .accessibilityIdentifier("loanPayment.fromAccount")
@@ -179,8 +179,11 @@ struct LoanPaymentView: View {
     private var categorySection: some View {
         Section {
             if let category = budgetStore.pairedLoanCategory(for: account.id) {
-                LabeledContent(String(localized: "Category"), value: category.name)
-                    .accessibilityIdentifier("loanPayment.category")
+                LabeledContent(
+                    String(localized: "Category"),
+                    value: budgetStore.displayCategoryName(id: category.id, fallback: category.name)
+                )
+                .accessibilityIdentifier("loanPayment.category")
             } else {
                 LabeledContent(
                     String(localized: "Category"),

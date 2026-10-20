@@ -335,7 +335,7 @@ struct BudgetView: View {
             }
         } header: {
             CompactBudgetGroupHeader(
-                name: group.name,
+                name: budgetStore.displayCategoryGroupName(id: group.id, fallback: group.name),
                 isCollapsed: isCollapsed,
                 isHidden: group.isHidden,
                 onSetHidden: {
@@ -911,7 +911,7 @@ struct BudgetView: View {
             }
         } header: {
             BudgetGroupHeader(
-                name: group.name,
+                name: budgetStore.displayCategoryGroupName(id: group.id, fallback: group.name),
                 isCollapsed: isCollapsed,
                 isHidden: group.isHidden,
                 onSetHidden: {
@@ -973,8 +973,14 @@ struct BudgetView: View {
     ) {
         let group = budgetStore.categoryGroups.first(where: \.isIncome)
         let rawName = group?.name ?? categories.first?.groupName ?? "Income"
+        let localizedName = rawName == "Income"
+            ? ReportStrings.text("Income", locale: locale, bundle: .main)
+            : rawName
+        let displayName = group.map {
+            budgetStore.displayCategoryGroupName(id: $0.id, fallback: localizedName)
+        } ?? localizedName
         return (
-            rawName == "Income" ? ReportStrings.text("Income", locale: locale, bundle: .main) : rawName,
+            displayName,
             group?.hidden == true,
             group.flatMap { group -> ((Bool) -> Void)? in
                 group.hidden ? { setCategoryGroupHidden(group.id, hidden: $0) } : nil
@@ -1353,12 +1359,12 @@ struct CleanCategoryBudgetRow: View {
                         if budgetStore.showCategoryStatusDots {
                             CompactCategoryStatusDot(state: category.progressState)
                         }
-                        Text(category.categoryName)
+                        Text(budgetStore.displayCategoryName(id: category.categoryId, fallback: category.categoryName))
                             .font(.body)
                     }
                 }
                 .buttonStyle(.plain)
-                .accessibilityLabel(BudgetCategoryAccessibility.details(category: category.categoryName, locale: locale))
+                .accessibilityLabel(BudgetCategoryAccessibility.details(category: budgetStore.displayCategoryName(id: category.categoryId, fallback: category.categoryName), locale: locale))
                 Spacer()
                 // A zero balance has nothing to move and nothing to cover, so
                 // it stays a plain label.
@@ -1371,7 +1377,7 @@ struct CleanCategoryBudgetRow: View {
                 .buttonStyle(.borderless)
                 .disabled(category.available == 0)
                 .accessibilityLabel(BudgetCategoryAccessibility.balanceAction(
-                    category: category.categoryName,
+                    category: budgetStore.displayCategoryName(id: category.categoryId, fallback: category.categoryName),
                     isOverspent: category.isOverspent,
                     locale: locale
                 ))
@@ -1397,7 +1403,7 @@ struct CleanCategoryBudgetRow: View {
                         }
                     }
                     .buttonStyle(.plain)
-                    .accessibilityLabel(BudgetCategoryAccessibility.editBudget(category: category.categoryName, locale: locale))
+                    .accessibilityLabel(BudgetCategoryAccessibility.editBudget(category: budgetStore.displayCategoryName(id: category.categoryId, fallback: category.categoryName), locale: locale))
                 }
                 Spacer()
                 Button {
@@ -1418,7 +1424,7 @@ struct CleanCategoryBudgetRow: View {
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel(BudgetCategoryAccessibility.monthTransactions(
-                    category: category.categoryName,
+                    category: budgetStore.displayCategoryName(id: category.categoryId, fallback: category.categoryName),
                     month: MonthPicker.title(for: category.month, locale: locale),
                     locale: locale
                 ))
@@ -1863,13 +1869,13 @@ struct IncomeCategoryRow: View {
                     onShowTransactions(income, nil)
                 } label: {
                     TwoLineName(
-                        text: income.categoryName,
+                        text: budgetStore.displayCategoryName(id: income.categoryId, fallback: income.categoryName),
                         font: .body,
                         minimumScaleFactor: 0.85
                     )
                 }
                 .buttonStyle(.plain)
-                .accessibilityLabel(ReportStrings.format("All transactions for %@", income.categoryName, locale: locale, bundle: .main))
+                .accessibilityLabel(ReportStrings.format("All transactions for %@", budgetStore.displayCategoryName(id: income.categoryId, fallback: income.categoryName), locale: locale, bundle: .main))
 
                 Spacer()
 
@@ -1879,7 +1885,7 @@ struct IncomeCategoryRow: View {
                 }
                 .buttonStyle(.borderless)
                 .accessibilityLabel(BudgetCategoryAccessibility.monthTransactions(
-                    category: income.categoryName,
+                    category: budgetStore.displayCategoryName(id: income.categoryId, fallback: income.categoryName),
                     month: MonthPicker.title(for: income.month, locale: locale),
                     locale: locale
                 ))
@@ -2396,7 +2402,7 @@ struct EditBudgetAmountSheet: View {
                     }
                 }
             }
-            .navigationTitle(category.categoryName)
+            .navigationTitle(budgetStore.displayCategoryName(id: category.categoryId, fallback: category.categoryName))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {

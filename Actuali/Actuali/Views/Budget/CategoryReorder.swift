@@ -625,12 +625,13 @@ struct CategoryReorderTable: View {
 
 /// The row's name and its drag handle: shared by the list row and the lifted copy.
 private struct ReorderRowContent: View {
+    @EnvironmentObject private var budgetStore: BudgetStore
     let category: CategoryBudget
     var handle: AnyView?
 
     var body: some View {
         HStack(spacing: 8) {
-            Text(category.categoryName)
+            Text(budgetStore.displayCategoryName(id: category.categoryId, fallback: category.categoryName))
                 .font(.body)
                 .lineLimit(1)
                 .opacity(category.isEffectivelyHidden ? 0.5 : 1)
@@ -651,6 +652,7 @@ private struct ReorderRowContent: View {
 }
 
 private struct ReorderRow: View {
+    @EnvironmentObject private var budgetStore: BudgetStore
     @GestureState private var touching = false
     let category: CategoryBudget
     let isFirst: Bool
@@ -689,7 +691,7 @@ private struct ReorderRow: View {
                 }
             }
             .accessibilityElement()
-            .accessibilityLabel(Text("Reorder \(category.categoryName)"))
+            .accessibilityLabel(Text("Reorder \(budgetStore.displayCategoryName(id: category.categoryId, fallback: category.categoryName))"))
             .accessibilityAddTraits(.isButton)
             .accessibilityIdentifier("reorder.handle.\(category.categoryId)")
             .accessibilityAction(named: "Move Up") {
@@ -723,11 +725,16 @@ private struct ReorderRow: View {
 
 /// A group's header in reorder mode, with the handle that drags the group.
 private struct ReorderHeader: View {
+    @EnvironmentObject private var budgetStore: BudgetStore
     @GestureState private var touching = false
     let groupId: String
     let name: String
     let controller: CategoryReorderController
     let groups: [BudgetView.CategoryGroupSection]
+
+    private var displayName: String {
+        budgetStore.displayCategoryGroupName(id: groupId, fallback: name)
+    }
 
     private var handle: some View {
         Image(systemName: "line.3.horizontal")
@@ -750,7 +757,7 @@ private struct ReorderHeader: View {
                 }
             }
             .accessibilityElement()
-            .accessibilityLabel(Text("Reorder \(name)"))
+            .accessibilityLabel(Text("Reorder \(displayName)"))
             .accessibilityAddTraits(.isButton)
             .accessibilityIdentifier("reorder.groupHandle.\(groupId)")
             .accessibilityAction(named: "Move Up") {
@@ -763,7 +770,7 @@ private struct ReorderHeader: View {
 
     var body: some View {
         HStack(spacing: 8) {
-            Text(name)
+            Text(displayName)
                 .font(.subheadline.weight(.semibold))
                 .lineLimit(1)
             Spacer(minLength: 8)
@@ -790,6 +797,7 @@ private struct ReorderHeader: View {
 /// it and it can cross groups. A view of its own so moving the finger redraws
 /// only this.
 private struct LiftedReorderRow: View {
+    @EnvironmentObject private var budgetStore: BudgetStore
     let controller: CategoryReorderController
 
     var body: some View {
@@ -800,7 +808,7 @@ private struct LiftedReorderRow: View {
         } else if let id = controller.liftedGroupId, let name = controller.groupNames[id] {
             lifted {
                 HStack(spacing: 8) {
-                    Text(name)
+                    Text(budgetStore.displayCategoryGroupName(id: id, fallback: name))
                         .font(.subheadline.weight(.semibold))
                         .lineLimit(1)
                     Spacer(minLength: 8)

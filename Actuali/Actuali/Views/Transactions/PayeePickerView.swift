@@ -55,10 +55,18 @@ struct PayeePickerView: View {
         searchText.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
+    private var displayAccounts: [Account] {
+        budgetStore.accounts.map { account in
+            var displayAccount = account
+            displayAccount.name = budgetStore.displayAccountName(account)
+            return displayAccount
+        }
+    }
+
     private var filteredPayees: [Payee] {
         Self.filteredPayees(
             from: budgetStore.payees,
-            accounts: budgetStore.accounts,
+            accounts: displayAccounts,
             transferFromAccountId: transferFromAccountId,
             searchText: trimmedSearchText
         )
@@ -204,7 +212,7 @@ struct PayeePickerView: View {
             onSelect(payee)
         } label: {
             Label {
-                Text(Self.displayName(for: payee, accounts: budgetStore.accounts))
+                Text(Self.displayName(for: payee, accounts: displayAccounts))
                     .foregroundStyle(.primary)
             } icon: {
                 Image(systemName: "clock.arrow.circlepath")
@@ -226,7 +234,7 @@ struct PayeePickerView: View {
                     onSelectAccount(account)
                 } label: {
                     Label {
-                        Text(account.name)
+                        Text(budgetStore.displayAccountName(account))
                             .foregroundStyle(.primary)
                     } icon: {
                         Image(systemName: "arrow.left.arrow.right")

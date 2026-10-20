@@ -245,13 +245,18 @@ struct SchedulesListView: View {
 
     private func accountName(_ schedule: ScheduleSummary) -> String? {
         schedule.accountId.flatMap { id in
-            budgetStore.accounts.first { $0.id == id }?.name
+            guard let account = budgetStore.accounts.first(where: { $0.id == id }) else { return nil }
+            return budgetStore.displayAccountName(account)
         }
     }
 
     private func payeeName(_ schedule: ScheduleSummary) -> String? {
         schedule.payeeId.flatMap { id in
-            budgetStore.payees.first { $0.id == id }?.name
+            guard let payee = budgetStore.payees.first(where: { $0.id == id }) else { return nil }
+            if budgetStore.shouldHideNamesWithBalances, let accountId = payee.transferAccountId {
+                return "\(String(localized: "Transfer")): \(budgetStore.displayAccountName(id: accountId, fallback: ""))"
+            }
+            return payee.name
         }
     }
 }
@@ -381,6 +386,66 @@ struct UpcomingScheduleSections: View {
         }
     }
 
+    private func accountName(_ schedule: ScheduleSummary) -> String? {
+        schedule.accountId.flatMap { id in
+            guard let account = budgetStore.accounts.first(where: { $0.id == id }) else { return nil }
+            return budgetStore.displayAccountName(account)
+        }
+    }
+
+    private func payeeName(_ schedule: ScheduleSummary) -> String? {
+        schedule.payeeId.flatMap { id in
+            guard let payee = budgetStore.payees.first(where: { $0.id == id }) else { return nil }
+            if budgetStore.shouldHideNamesWithBalances, let accountId = payee.transferAccountId {
+                let transferLabel = String(localized: "Transfer")
+                let linkedAccountName = budgetStore.displayAccountName(id: accountId, fallback: "")
+                return "\(transferLabel): \(linkedAccountName)"
+            }
+            return payee.name
+        }
+    }
+
+    private func actionScheduleBinding(for schedule: ScheduleSummary) -> Binding<Bool> {
+        Binding(
+            get: { actionSchedule?.id == schedule.id },
+            set: { isPresented in
+                if !isPresented {
+                    actionSchedule = nil
+                }
+            }
+        )
+    }
+
+    private func scheduleEntryRow(_ entry: UpcomingScheduleEntry) -> some View {
+        let schedule = entry.schedule
+        let rowStatus: ScheduleStatus = budgetStore.scheduleStatuses[schedule.id] ?? .scheduled
+        let rowAccountName: String? = accountName(schedule)
+        let rowPayeeName: String? = payeeName(schedule)
+        let rowRunningBalance: Int? = showRunningBalance ? entry.runningBalance : nil
+
+        return Button {
+            actionSchedule = schedule
+        } label: {
+            ScheduleRow(
+                schedule: schedule,
+                status: rowStatus,
+                accountName: rowAccountName,
+                payeeName: rowPayeeName,
+                runningBalance: rowRunningBalance,
+                showsNextDate: false
+            )
+        }
+        .accessibilityIdentifier("scheduleRegister.row.\(schedule.id)")
+        // Per row, so the iOS 26 popover anchors to the tapped row (GH #675).
+        .confirmationDialog(
+            String(localized: "Scheduled Transactions"),
+            isPresented: actionScheduleBinding(for: schedule),
+            titleVisibility: .visible
+        ) {
+            scheduleActions(schedule)
+        }
+    }
+
     private var entriesByDate: [(key: DayDate, value: [UpcomingScheduleEntry])] {
         Dictionary(grouping: entries, by: \.date).sorted { $0.key > $1.key }
     }
@@ -470,39 +535,7 @@ struct UpcomingScheduleSections: View {
             ForEach(entriesByDate, id: \.key) { group in
                 Section(Transaction.formattedDate(from: group.key.yyyymmdd, style: .long)) {
                     ForEach(group.value) { entry in
-                        let schedule = entry.schedule
-                        Button {
-                            actionSchedule = schedule
-                        } label: {
-                            ScheduleRow(
-                                schedule: schedule,
-                                status: budgetStore.scheduleStatuses[schedule.id] ?? .scheduled,
-                                accountName: schedule.accountId.flatMap { id in
-                                    budgetStore.accounts.first { $0.id == id }?.name
-                                },
-                                payeeName: schedule.payeeId.flatMap { id in
-                                    budgetStore.payees.first { $0.id == id }?.name
-                                },
-                                runningBalance: showRunningBalance ? entry.runningBalance : nil,
-                                showsNextDate: false
-                            )
-                        }
-                        .accessibilityIdentifier("scheduleRegister.row.\(schedule.id)")
-                        // Per row, so the iOS 26 popover anchors to the tapped row (GH #675).
-                        .confirmationDialog(
-                            String(localized: "Scheduled Transactions"),
-                            isPresented: Binding(
-                                get: { actionSchedule?.id == schedule.id },
-                                set: {
-                                    if !$0 {
-                                        actionSchedule = nil
-                                    }
-                                }
-                            ),
-                            titleVisibility: .visible
-                        ) {
-                            scheduleActions(schedule)
-                        }
+                        scheduleEntryRow(entry)
                     }
                 }
             }

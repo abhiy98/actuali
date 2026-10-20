@@ -199,7 +199,7 @@ struct BudgetTransferSheet: View {
                             }
                             ForEach(Array(eligibleCategories.enumerated()), id: \.element.id) { index, candidate in
                                 Text(BudgetTransferLocalization.candidateLabel(
-                                    categoryName: candidate.categoryName,
+                                    categoryName: budgetStore.displayCategoryName(id: candidate.categoryId, fallback: candidate.categoryName),
                                     amount: budgetStore.displayBalance(candidate.available),
                                     isRecommended: index == 0 && isCovering,
                                     locale: locale
@@ -218,8 +218,8 @@ struct BudgetTransferSheet: View {
                 } footer: {
                     if let category = context.category {
                         Text(isCovering
-                            ? "\(category.categoryName) is overspent by \(budgetStore.displayBalance(abs(category.available))) in \(MonthPicker.title(for: category.month))."
-                            : "\(category.categoryName) has \(budgetStore.displayBalance(category.available)) available in \(MonthPicker.title(for: category.month)).")
+                            ? "\(budgetStore.displayCategoryName(id: category.categoryId, fallback: category.categoryName)) is overspent by \(budgetStore.displayBalance(abs(category.available))) in \(MonthPicker.title(for: category.month))."
+                            : "\(budgetStore.displayCategoryName(id: category.categoryId, fallback: category.categoryName)) has \(budgetStore.displayBalance(category.available)) available in \(MonthPicker.title(for: category.month)).")
                     }
                 }
 

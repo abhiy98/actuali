@@ -1179,7 +1179,7 @@ private struct AccountGroupListHeader: View {
             }
         } label: {
             HStack(spacing: 7) {
-                Text(group.name)
+                Text(budgetStore.displayAccountGroupName(id: group.id, fallback: group.name))
                     .font(.body.weight(.bold))
                     .foregroundStyle(isExpanded ? .secondary : .primary)
                 Spacer()
@@ -1201,7 +1201,7 @@ private struct AccountGroupListHeader: View {
         .listRowSeparator(isBackgroundClear ? .hidden : .visible, edges: .top)
         .listRowSeparator(.hidden, edges: .bottom)
         .accessibilityAddTraits(.isHeader)
-        .accessibilityLabel(String(format: String(localized: "accounts.group.accessibility"), group.name, isExpanded ? String(localized: "expanded") : String(localized: "collapsed"), totalText))
+        .accessibilityLabel(String(format: String(localized: "accounts.group.accessibility"), budgetStore.displayAccountGroupName(id: group.id, fallback: group.name), isExpanded ? String(localized: "expanded") : String(localized: "collapsed"), totalText))
         .accessibilityIdentifier("account.subgroup.\(group.id)")
     }
 
@@ -1302,7 +1302,7 @@ struct AccountRow: View {
     private var row: some View {
         let balance = budgetStore.displayBalance(account.balance)
         return HStack {
-            Text(account.name)
+            Text(budgetStore.displayAccountName(account))
                 .font(.body)
                 .padding(.leading, 8)
             Spacer()
@@ -1325,7 +1325,7 @@ struct AccountRow: View {
         Menu(String(localized: "Set Account Group"), systemImage: "folder") {
             Button(String(localized: "None")) { Task { try? await budgetStore.setAccountGroup(account, groupId: nil) } }
             ForEach(budgetStore.accountGroups) { group in
-                Button(group.name) { Task { try? await budgetStore.setAccountGroup(account, groupId: group.id) } }
+                Button(budgetStore.displayAccountGroupName(id: group.id, fallback: group.name)) { Task { try? await budgetStore.setAccountGroup(account, groupId: group.id) } }
             }
             Divider()
             Button {
@@ -1363,7 +1363,7 @@ private struct AccountGroupsSheet: View {
                 Section {
                     ForEach(budgetStore.accountGroups) { group in
                         HStack {
-                            Text(group.name)
+                            Text(budgetStore.displayAccountGroupName(id: group.id, fallback: group.name))
                             Spacer()
                             Button(String(localized: "Rename")) {
                                 renameTarget = group

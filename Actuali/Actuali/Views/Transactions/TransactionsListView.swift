@@ -415,8 +415,21 @@ struct TransactionRow: View {
     @State private var confirmingUnlock = false
 
     var accountName: String {
-        budgetStore.accounts.first { $0.id == transaction.accountId }?.name
-            ?? String(localized: TransactionsListLocalization.unknownAccount, locale: locale)
+        guard let account = budgetStore.accounts.first(where: { $0.id == transaction.accountId }) else {
+            return String(localized: TransactionsListLocalization.unknownAccount, locale: locale)
+        }
+        return budgetStore.displayAccountName(account)
+    }
+
+    private var displayPayeeName: String? {
+        guard budgetStore.shouldHideNamesWithBalances else { return transaction.payeeName }
+        if let transferAccountId = transaction.transferAcct {
+            return "\(String(localized: "Transfer")): \(budgetStore.displayAccountName(id: transferAccountId, fallback: ""))"
+        }
+        if transaction.transferId != nil {
+            return String(localized: "Transfer")
+        }
+        return transaction.payeeName
     }
 
     private var isInOffBudgetAccount: Bool {
@@ -477,7 +490,7 @@ struct TransactionRow: View {
     private var splitBreakdown: String? {
         guard let portions = transaction.splitPortions, !portions.isEmpty else { return nil }
         return portions.map { portion in
-            let name = portion.categoryName
+            let name = portion.categoryName.map { budgetStore.displayCategoryName(matching: $0) }
                 ?? String(localized: TransactionsListLocalization.uncategorized, locale: locale)
             return "\(name) \(budgetStore.displaySpentCaption(portion.amount))"
         }.joined(separator: "\n")
@@ -485,7 +498,7 @@ struct TransactionRow: View {
 
     private var categoryLabel: String {
         Self.categoryLabel(
-            categoryName: transaction.categoryName,
+            categoryName: budgetStore.displayCategoryName(id: transaction.categoryId, fallback: transaction.categoryName),
             isParent: transaction.isParent,
             splitBreakdown: splitBreakdown,
             isInOffBudgetAccount: isInOffBudgetAccount,
@@ -586,7 +599,7 @@ struct TransactionRow: View {
             }
             VStack(alignment: .leading, spacing: 2) {
                 Text(Self.payeeLabel(
-                    payeeName: transaction.payeeName,
+                    payeeName: displayPayeeName,
                     isParent: transaction.isParent,
                     isInOffBudgetAccount: isInOffBudgetAccount,
                     locale: locale

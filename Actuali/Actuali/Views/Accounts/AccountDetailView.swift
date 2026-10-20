@@ -295,8 +295,9 @@ struct AccountDetailView: View {
         }
         breakdownRow(
             String(localized: "Category"),
-            value: budgetStore.pairedLoanCategory(for: account.id)?.name
-                ?? String(localized: "Not paired")
+            value: budgetStore.pairedLoanCategory(for: account.id).map {
+                budgetStore.displayCategoryName(id: $0.id, fallback: $0.name)
+            } ?? String(localized: "Not paired")
         )
         if budgetStore.pairedLoanCategory(for: account.id) != nil {
             breakdownRow(
@@ -988,7 +989,7 @@ struct AccountDetailView: View {
         .contentMargins(.top, 8, for: .scrollContent)
         .listSectionSpacing(.compact)
         .readableWidth()
-        .navigationTitle(account.name)
+        .navigationTitle(budgetStore.displayAccountName(account))
         .searchable(text: $searchText, placement: .navigationBarDrawer(displayMode: .always), prompt: "Search transactions")
         .toolbar {
             accountToolbarContent
@@ -1074,7 +1075,7 @@ struct AccountDetailView: View {
         }) {
             NoteEditorView(
                 noteId: EntityNote.accountNoteId(account.id),
-                title: account.name,
+                title: budgetStore.displayAccountName(account),
                 note: note.text
             )
             .environmentObject(budgetStore)

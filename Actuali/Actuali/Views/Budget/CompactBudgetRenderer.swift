@@ -490,7 +490,7 @@ struct CompactCategoryBudgetRow: View {
                 if showsStatusDots {
                     CompactCategoryStatusDot(state: category.progressState)
                 }
-                Text(category.categoryName)
+                Text(budgetStore.displayCategoryName(id: category.categoryId, fallback: category.categoryName))
                     .font(.subheadline)
                     .foregroundStyle(.primary)
                     .lineLimit(2)
@@ -525,7 +525,7 @@ struct CompactCategoryBudgetRow: View {
 
     private var monthTransactionsLabel: String {
         CompactBudgetAccessibility.monthTransactions(
-            category: category.categoryName,
+            category: budgetStore.displayCategoryName(id: category.categoryId, fallback: category.categoryName),
             month: MonthPicker.title(for: category.month),
             amountLabel: String(localized: "spent", bundle: .main, locale: locale),
             amount: budgetStore.displayBalance(category.spent),
@@ -536,7 +536,7 @@ struct CompactCategoryBudgetRow: View {
 
     private var editBudgetAccessibilityLabel: String {
         CompactBudgetAccessibility.editBudget(
-            category: category.categoryName,
+            category: budgetStore.displayCategoryName(id: category.categoryId, fallback: category.categoryName),
             amount: budgetStore.displayBalance(category.budgeted),
             locale: locale,
             bundle: .main
@@ -545,7 +545,7 @@ struct CompactCategoryBudgetRow: View {
 
     private var detailAccessibilityLabel: String {
         CompactBudgetAccessibility.details(
-            category: category.categoryName,
+            category: budgetStore.displayCategoryName(id: category.categoryId, fallback: category.categoryName),
             status: showsStatusDots ? category.progressState.statusText(locale: locale, bundle: .main) : nil,
             locale: locale,
             bundle: .main
@@ -558,7 +558,7 @@ struct CompactCategoryBudgetRow: View {
             isMasked: budgetStore.hideBalances
         )
         return CompactBudgetAccessibility.balanceAction(
-            category: category.categoryName,
+            category: budgetStore.displayCategoryName(id: category.categoryId, fallback: category.categoryName),
             isOverspent: category.isOverspent,
             balance: budgetStore.displayBalance(category.available),
             tone: CompactBudgetAccessibility.balanceStatus(tone, locale: locale, bundle: .main),
@@ -793,7 +793,7 @@ struct CompactIncomeCategoryRow: View {
         Button {
             onShowTransactions(income, nil)
         } label: {
-            Text(income.categoryName)
+            Text(budgetStore.displayCategoryName(id: income.categoryId, fallback: income.categoryName))
                 .font(.subheadline)
                 .foregroundStyle(.primary)
                 .lineLimit(2)
@@ -842,7 +842,7 @@ struct CompactIncomeCategoryRow: View {
 
     private var budgetedAccessibilityLabel: String {
         CompactBudgetAccessibility.incomeBudgeted(
-            category: income.categoryName,
+            category: budgetStore.displayCategoryName(id: income.categoryId, fallback: income.categoryName),
             amount: budgetStore.displayBalance(income.budgeted),
             locale: locale,
             bundle: .main
@@ -851,7 +851,7 @@ struct CompactIncomeCategoryRow: View {
 
     private var monthTransactionsLabel: String {
         CompactBudgetAccessibility.monthTransactions(
-            category: income.categoryName,
+            category: budgetStore.displayCategoryName(id: income.categoryId, fallback: income.categoryName),
             month: MonthPicker.title(for: income.month),
             amountLabel: CompactBudgetColumn.received.label(locale: locale, bundle: .main),
             amount: budgetStore.displayBalance(income.received),

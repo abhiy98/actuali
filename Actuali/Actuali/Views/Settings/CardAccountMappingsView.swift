@@ -50,7 +50,16 @@ struct CardAccountMappingsView: View {
     }
 
     private var mappedAccounts: [MappedAccount] {
-        Self.groupByAccount(cardMappings: budgetStore.cardAccountMappings, accounts: budgetStore.accounts)
+        let accounts = Self.groupByAccount(
+            cardMappings: budgetStore.cardAccountMappings,
+            accounts: budgetStore.accounts
+        )
+        guard budgetStore.shouldHideNamesWithBalances else { return accounts }
+        return accounts.sorted {
+            let lhs = budgetStore.displayAccountName(id: $0.accountId, fallback: $0.accountName)
+            let rhs = budgetStore.displayAccountName(id: $1.accountId, fallback: $1.accountName)
+            return lhs.localizedCaseInsensitiveCompare(rhs) == .orderedAscending
+        }
     }
 
     private var suggestedMappings: [CardMappingSuggestion] {
@@ -153,7 +162,7 @@ struct CardAccountMappingsView: View {
                         } label: {
                             HStack {
                                 VStack(alignment: .leading, spacing: 6) {
-                                    Text(item.accountName)
+                                    Text(budgetStore.displayAccountName(id: item.accountId, fallback: item.accountName))
                                         .font(.headline)
                                         .foregroundStyle(.primary)
                                     FlowLayout(spacing: 6) {
@@ -293,7 +302,7 @@ struct CardMappingEditor: View {
                         )
                     ) {
                         ForEach(budgetStore.accounts.filter { !$0.closed || $0.id == effectiveAccountId }) { account in
-                            Text(account.name).tag(account.id)
+                            Text(budgetStore.displayAccountName(account)).tag(account.id)
                         }
                     }
                     .accessibilityIdentifier("cardMappings.accountPicker")

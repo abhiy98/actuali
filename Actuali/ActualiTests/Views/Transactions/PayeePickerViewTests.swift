@@ -149,6 +149,14 @@ struct PayeePickerViewTests {
         Account(id: id, name: name, type: .checking, offBudget: false, closed: false, sortOrder: 0, balance: 0)
     }
 
+    @Test func transferPayeeCanRenderWithMaskedAccountName() {
+        let transfer = payee(id: "transfer", name: "", transferAccountId: "checking")
+        let accounts = [account("checking", "Account 1")]
+        let expected = "\(String(localized: "Transfer")): Account 1"
+
+        #expect(PayeePickerView.displayName(for: transfer, accounts: accounts) == expected)
+    }
+
     @Test func transferAccountsListEveryAccountForAnEmptySearch() {
         let accounts = [account("a", "Checking"), account("b", "Savings")]
 

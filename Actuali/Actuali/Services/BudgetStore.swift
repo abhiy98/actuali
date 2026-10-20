@@ -898,6 +898,15 @@ final class BudgetStore: ObservableObject {
         }
     }
 
+    /// Whether account, category, and category-group names are masked along with balances.
+    /// This is a device-level presentation preference and never changes synced names.
+    @Published var hideNamesWhenBalancesHidden: Bool = false {
+        didSet {
+            UserDefaults.standard.set(hideNamesWhenBalancesHidden, forKey: "hideNamesWhenBalancesHidden")
+            publishWidgetSnapshot()
+        }
+    }
+
     /// Changes only for enabled shake gestures, so view feedback is not
     /// coupled to every other way `hideBalances` can change.
     @Published private(set) var shakeFeedbackTrigger = false
@@ -1014,6 +1023,66 @@ final class BudgetStore: ObservableObject {
     /// passcode-style "hidden" treatment while inheriting each label's font,
     /// size, and color.
     static let hiddenBalanceText = "\u{2022}\u{2022}\u{2022}\u{2022}"
+
+    /// Names follow the balance privacy state rather than the setting alone, so
+    /// revealing balances immediately restores the user's real labels.
+    var shouldHideNamesWithBalances: Bool {
+        hideBalances && hideNamesWhenBalancesHidden
+    }
+
+    func displayAccountName(_ account: Account) -> String {
+        displayAccountName(id: account.id, fallback: account.name)
+    }
+
+    func displayAccountName(id: String, fallback: String) -> String {
+        guard shouldHideNamesWithBalances else { return fallback }
+        guard let index = accounts.firstIndex(where: { $0.id == id }) else {
+            return Self.hiddenBalanceText
+        }
+        return String(format: String(localized: "Account %d"), index + 1)
+    }
+
+    func displayAccountGroupName(id: String, fallback: String) -> String {
+        guard shouldHideNamesWithBalances else { return fallback }
+        guard let index = accountGroups.firstIndex(where: { $0.id == id }) else {
+            return Self.hiddenBalanceText
+        }
+        return String(format: String(localized: "Account Group %d"), index + 1)
+    }
+
+    func displayCategoryName(id: String, fallback: String) -> String {
+        guard shouldHideNamesWithBalances else { return fallback }
+        let categories = categoryGroups.flatMap(\.categories)
+        guard let index = categories.firstIndex(where: { $0.id == id }) else {
+            return String(localized: "Category")
+        }
+        return String(format: String(localized: "Category %d"), index + 1)
+    }
+
+    func displayCategoryName(id: String?, fallback: String?) -> String? {
+        guard let fallback else { return nil }
+        guard shouldHideNamesWithBalances else { return fallback }
+        guard let id else { return String(localized: "Category") }
+        return displayCategoryName(id: id, fallback: fallback)
+    }
+
+    /// Split portions only carry a denormalized name, not a category ID.
+    /// Resolve that name against the budget for the same stable label when possible.
+    func displayCategoryName(matching name: String) -> String {
+        guard shouldHideNamesWithBalances else { return name }
+        guard let category = categoryGroups.flatMap(\.categories).first(where: { $0.name == name }) else {
+            return String(localized: "Category")
+        }
+        return displayCategoryName(id: category.id, fallback: name)
+    }
+
+    func displayCategoryGroupName(id: String, fallback: String) -> String {
+        guard shouldHideNamesWithBalances else { return fallback }
+        guard let index = categoryGroups.firstIndex(where: { $0.id == id }) else {
+            return Self.hiddenBalanceText
+        }
+        return String(format: String(localized: "Category Group %d"), index + 1)
+    }
 
     /// Formats a standard currency amount unless the privacy mask is enabled.
     func displayBalance(_ cents: Int) -> String {
@@ -2055,6 +2124,9 @@ final class BudgetStore: ObservableObject {
         )
         _shakeToHideBalances = Published(
             initialValue: persistedBool("shakeToHideBalances", default: false)
+        )
+        _hideNamesWhenBalancesHidden = Published(
+            initialValue: persistedBool("hideNamesWhenBalancesHidden", default: false)
         )
         _hideDecimalPlaces = Published(
             initialValue: persistedBool("hideDecimalPlaces", default: false)
