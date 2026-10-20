@@ -27,6 +27,11 @@ final class AddTransactionKeyboardUITests: XCTestCase {
         let done = app.buttons["Done"]
         XCTAssertTrue(done.waitForExistence(timeout: 5),
                       "no Done button above the decimal pad for the amount field")
+        XCTAssertLessThanOrEqual(
+            done.frame.maxX,
+            app.frame.maxX - 4,
+            "Done button should remain fully visible with trailing clearance"
+        )
         done.tap()
 
         XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: 5),
