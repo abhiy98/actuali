@@ -819,7 +819,6 @@ struct AddTransactionView: View {
                     Spacer()
                     Button("Done") { dismissKeyboard() }
                         .fontWeight(.semibold)
-                        .padding(.trailing, 8)
                 }
             }
             .disabled(isLoading)

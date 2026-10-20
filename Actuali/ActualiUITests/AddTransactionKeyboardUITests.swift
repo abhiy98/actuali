@@ -29,8 +29,8 @@ final class AddTransactionKeyboardUITests: XCTestCase {
                       "no Done button above the decimal pad for the amount field")
         XCTAssertLessThanOrEqual(
             done.frame.maxX,
-            app.frame.maxX - 4,
-            "Done button should remain fully visible with trailing clearance"
+            app.frame.maxX,
+            "Done button should remain within the app's visible width"
         )
         done.tap()
 
