@@ -26,7 +26,7 @@ struct CreditCardsSettingsView: View {
     @State private var selectedStatementDay: CreditCardDaySelection = .day(15)
     @State private var selectedDueMode: DueDateMode = .daysAfter
     @State private var selectedDueOffset = CreditCardCycle.defaultDueOffsetDays
-    @State private var selectedDueDay: CreditCardDaySelection = .day(1)
+    @State private var selectedDueDay = 1
     /// Dot-decimal amount as typed, the format `AmountInputField` binds to.
     /// Empty means "no limit set".
     @State private var selectedLimitText = ""
@@ -88,14 +88,10 @@ struct CreditCardsSettingsView: View {
                             case .daysAfter(let days):
                                 selectedDueMode = .daysAfter
                                 selectedDueOffset = days
-                                selectedDueDay = .day(1)
+                                selectedDueDay = 1
                             case .dayOfMonth(let day):
                                 selectedDueMode = .dayOfMonth
-                                selectedDueDay = .day(day)
-                                selectedDueOffset = CreditCardCycle.defaultDueOffsetDays
-                            case .lastDayOfMonth:
-                                selectedDueMode = .dayOfMonth
-                                selectedDueDay = .lastDay
+                                selectedDueDay = day
                                 selectedDueOffset = CreditCardCycle.defaultDueOffsetDays
                             }
                             selectedLimitText = limitText(for: item.account.id)
@@ -136,7 +132,7 @@ struct CreditCardsSettingsView: View {
                         selectedStatementDay = .day(15)
                         selectedDueMode = .daysAfter
                         selectedDueOffset = CreditCardCycle.defaultDueOffsetDays
-                        selectedDueDay = .day(1)
+                        selectedDueDay = 1
                         selectedLimitText = ""
                         showingAddSheet = true
                     } label: {
@@ -202,10 +198,8 @@ struct CreditCardsSettingsView: View {
                     } else {
                         Picker(String(localized: "Payment Due Day"), selection: $selectedDueDay) {
                             ForEach(1...31, id: \.self) { day in
-                                Text(ScheduleDescription.ordinal(day, locale: locale)).tag(CreditCardDaySelection.day(day))
+                                Text(ScheduleDescription.ordinal(day, locale: locale)).tag(day)
                             }
-                            Text(String(localized: "Last day"))
-                                .tag(CreditCardDaySelection.lastDay)
                         }
                     }
 
@@ -263,10 +257,7 @@ struct CreditCardsSettingsView: View {
                             case .daysAfter:
                                 paymentDue = .daysAfter(selectedDueOffset)
                             case .dayOfMonth:
-                                switch selectedDueDay {
-                                case .day(let day): paymentDue = .dayOfMonth(day)
-                                case .lastDay: paymentDue = .lastDayOfMonth
-                                }
+                                paymentDue = .dayOfMonth(selectedDueDay)
                             }
 
                             await budgetStore.setCreditCard(
