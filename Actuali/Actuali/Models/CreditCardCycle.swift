@@ -9,10 +9,11 @@ struct CreditCardCycle: Equatable, Hashable {
     enum PaymentDue: Equatable, Hashable, Sendable {
         case daysAfter(Int)
         case dayOfMonth(Int)
+        case lastDayOfMonth
     }
 
-    /// Day of the month the statement closes (1...31).
     let statementDay: Int
+    let statementDayIsLast: Bool
 
     /// Payment due rule for this card.
     let paymentDue: PaymentDue
@@ -22,7 +23,7 @@ struct CreditCardCycle: Equatable, Hashable {
     var dueOffsetDays: Int {
         switch paymentDue {
         case .daysAfter(let days): days
-        case .dayOfMonth: Self.defaultDueOffsetDays
+        case .dayOfMonth, .lastDayOfMonth: Self.defaultDueOffsetDays
         }
     }
 
@@ -33,14 +34,20 @@ struct CreditCardCycle: Equatable, Hashable {
     /// in `upcomingDueDate`.
     static let maxDueOffsetDays = 60
 
-    init(statementDay: Int, paymentDue: PaymentDue = .daysAfter(Self.defaultDueOffsetDays)) {
+    init(
+        statementDay: Int,
+        statementDayIsLast: Bool = false,
+        paymentDue: PaymentDue = .daysAfter(Self.defaultDueOffsetDays)
+    ) {
         self.statementDay = statementDay
+        self.statementDayIsLast = statementDayIsLast
         self.paymentDue = paymentDue
     }
 
-    /// Clamps statement day to the given month's actual length.
+    /// ponytail: Reuse the existing month-length helper for both numbered days and explicit month-end.
     private func clampedDay(year: Int, month: Int) -> Int {
-        min(statementDay, DayDate.lastDay(year: year, month: month))
+        let lastDay = DayDate.lastDay(year: year, month: month)
+        return statementDayIsLast ? lastDay : min(statementDay, lastDay)
     }
 
     /// The active billing cycle date range containing `today`.
@@ -79,6 +86,14 @@ struct CreditCardCycle: Equatable, Hashable {
         switch paymentDue {
         case .daysAfter(let days):
             return statement.adding(days: days)
+        case .lastDayOfMonth:
+            let statementMonthLastDay = DayDate.lastDay(year: statement.year, month: statement.month)
+            let month = statement.day < statementMonthLastDay ? statement : statement.adding(months: 1)
+            return DayDate(
+                year: month.year,
+                month: month.month,
+                day: DayDate.lastDay(year: month.year, month: month.month)
+            )
         case .dayOfMonth(let day):
             // If dueDay > statementDay: payment is due in the same month as statement closing (e.g. 5th -> 25th).
             // If dueDay <= statementDay: payment is due in the following month (e.g. 15th -> 1st).

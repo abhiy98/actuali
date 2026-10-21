@@ -1184,7 +1184,7 @@ final class BudgetStore: ObservableObject {
         }
     }
 
-    /// Mappings from accountId -> statement closing day (1...31).
+    /// Mappings from accountId -> statement closing day (1...31 or the last-day sentinel).
     /// Persisted per budget in the preferences table. An account with a statement day
     /// configured is treated as a credit card with that billing cycle in Actuali.
     var creditCardStatementDays: [String: Int] {
@@ -1218,22 +1218,55 @@ final class BudgetStore: ObservableObject {
     func setCreditCard(
         accountId: String,
         statementDay: Int?,
+        statementDayIsLast: Bool = false,
         paymentDue: CreditCardCycle.PaymentDue = .daysAfter(CreditCardCycle.defaultDueOffsetDays),
         limit: Int?
     ) async {
         guard currentBudgetId != nil else { return }
         let previous = creditCardConfigs[accountId]
-        let config: CreditCardConfig? = statementDay.map {
+        let config: CreditCardConfig? = statementDay.map { selectedDay in
+            let day = statementDayIsLast ? 31 : selectedDay
             switch paymentDue {
             case .daysAfter(let days):
-                return CreditCardConfig(statementDay: $0, dueOffsetDays: days, dueDay: nil, limit: limit)
-            case .dayOfMonth(let day):
-                // Older builds ignore `dueDay` and fall back to `dueOffsetDays`.
-                // Store the real gap so they stay close to the correct date.
-                let cycle = CreditCardCycle(statementDay: $0, paymentDue: .dayOfMonth(day))
+                return CreditCardConfig(
+                    statementDay: day,
+                    statementDayIsLast: statementDayIsLast,
+                    dueOffsetDays: days,
+                    dueDay: nil,
+                    limit: limit
+                )
+            case .dayOfMonth(let dueDay):
+                // Older builds ignore the intent flags and use the numeric day and offset.
+                let cycle = CreditCardCycle(
+                    statementDay: day,
+                    statementDayIsLast: statementDayIsLast,
+                    paymentDue: .dayOfMonth(dueDay)
+                )
                 let statement = cycle.previousStatementDate()
                 let offset = max(1, statement.days(until: cycle.dueDate(forStatement: statement)))
-                return CreditCardConfig(statementDay: $0, dueOffsetDays: offset, dueDay: day, limit: limit)
+                return CreditCardConfig(
+                    statementDay: day,
+                    statementDayIsLast: statementDayIsLast,
+                    dueOffsetDays: offset,
+                    dueDay: dueDay,
+                    limit: limit
+                )
+            case .lastDayOfMonth:
+                let cycle = CreditCardCycle(
+                    statementDay: day,
+                    statementDayIsLast: statementDayIsLast,
+                    paymentDue: .lastDayOfMonth
+                )
+                let statement = cycle.previousStatementDate()
+                let offset = max(1, statement.days(until: cycle.dueDate(forStatement: statement)))
+                return CreditCardConfig(
+                    statementDay: day,
+                    statementDayIsLast: statementDayIsLast,
+                    dueOffsetDays: offset,
+                    dueDay: 31,
+                    dueDayIsLast: true,
+                    limit: limit
+                )
             }
         }
         creditCardConfigs[accountId] = config
@@ -1352,6 +1385,7 @@ final class BudgetStore: ObservableObject {
         guard let config = creditCardConfigs[accountId] else { return nil }
         return CreditCardCycle(
             statementDay: config.statementDay,
+            statementDayIsLast: config.statementDayIsLast,
             paymentDue: config.paymentDue
         )
     }

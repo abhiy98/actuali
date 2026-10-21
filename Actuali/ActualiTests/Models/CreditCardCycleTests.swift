@@ -39,6 +39,16 @@ struct CreditCardCycleTests {
         #expect(end == DayDate(year: 2026, month: 2, day: 28))
     }
 
+    @Test func cycleRangeSupportsExplicitLastDayOfMonth() {
+        let cycle = CreditCardCycle(statementDay: 31, statementDayIsLast: true)
+
+        let february = cycle.cycleRange(for: DayDate(year: 2026, month: 2, day: 15))
+        #expect(february.end == DayDate(year: 2026, month: 2, day: 28))
+
+        let leapFebruary = cycle.cycleRange(for: DayDate(year: 2028, month: 2, day: 15))
+        #expect(leapFebruary.end == DayDate(year: 2028, month: 2, day: 29))
+    }
+
     @Test func cycleRangeStartsDayAfterAClampedPreviousStatement() {
         let cycle = CreditCardCycle(statementDay: 31)
         // Today is Mar 1, 2026: the Feb statement clamped to Feb 28, so the
@@ -216,6 +226,20 @@ struct CreditCardCycleTests {
         #expect(cycle.upcomingDueDate(for: today) == DayDate(year: 2026, month: 2, day: 28))
     }
 
+    @Test func dueDayLastDayOfMonthFollowsTheStatementWhenPossible() {
+        let midMonthStatement = CreditCardCycle(statementDay: 15, paymentDue: .lastDayOfMonth)
+        #expect(midMonthStatement.dueDate(forStatement: DayDate(year: 2026, month: 2, day: 15))
+            == DayDate(year: 2026, month: 2, day: 28))
+
+        let monthEndStatement = CreditCardCycle(
+            statementDay: 31,
+            statementDayIsLast: true,
+            paymentDue: .lastDayOfMonth
+        )
+        #expect(monthEndStatement.dueDate(forStatement: DayDate(year: 2026, month: 2, day: 28))
+            == DayDate(year: 2026, month: 3, day: 31))
+    }
+
     @Test func upcomingDueDateRollsOverYearEndWithDueDay() {
         let cycle = CreditCardCycle(statementDay: 15, paymentDue: .dayOfMonth(1))
         // Today is Dec 20, 2026: Dec 15 statement closed, due on Jan 1, 2027
@@ -385,10 +409,22 @@ struct CreditCardCycleTests {
         try await withStore { store in
             await store.setCreditCard(accountId: "acct_chase", statementDay: 18, limit: nil)
             await store.setCreditCard(accountId: "acct_apple", statementDay: 31, limit: nil)
+            await store.setCreditCard(
+                accountId: "acct_eom",
+                statementDay: 31,
+                statementDayIsLast: true,
+                paymentDue: .lastDayOfMonth,
+                limit: nil
+            )
 
             #expect(store.creditCardStatementDays["acct_chase"] == 18)
             #expect(store.creditCardStatementDays["acct_apple"] == 31)
+            #expect(store.creditCardStatementDays["acct_eom"] == 31)
             #expect(store.creditCardCycle(for: "acct_chase")?.statementDay == 18)
+            #expect(store.creditCardConfigs["acct_eom"]?.statementDayIsLast == true)
+            #expect(store.creditCardConfigs["acct_eom"]?.dueDay == 31)
+            #expect(store.creditCardConfigs["acct_eom"]?.dueDayIsLast == true)
+            #expect(store.creditCardCycle(for: "acct_eom")?.paymentDue == .lastDayOfMonth)
 
             // Remove card
             await store.setCreditCard(accountId: "acct_chase", statementDay: nil, limit: nil)
