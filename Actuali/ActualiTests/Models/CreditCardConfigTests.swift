@@ -55,27 +55,31 @@ struct CreditCardConfigTests {
         #expect(json["dueDayIsLast"] == nil)
     }
 
-    @Test func normalizesLegacyMonthEndValues() throws {
-        let json = """
+    @Test func rejectsOutOfRangeDayValues() throws {
+        let invalidStatementDay = """
         {
-            "statementDay": 32,
-            "dueOffsetDays": 15,
+            "statementDay": 32
+        }
+        """
+        let invalidDueDay = """
+        {
+            "statementDay": 15,
             "dueDay": 32
         }
         """
-        let data = try #require(json.data(using: .utf8))
-        let decoded = try JSONDecoder().decode(CreditCardConfig.self, from: data)
-        let encoded = try JSONEncoder().encode(decoded)
-        let encodedJSON = try #require(JSONSerialization.jsonObject(with: encoded) as? [String: Any])
 
-        #expect(decoded.statementDay == 31)
-        #expect(decoded.statementDayIsLast)
-        #expect(decoded.dueDay == 31)
-        #expect(decoded.paymentDue == .dayOfMonth(31))
-        #expect(encodedJSON["statementDay"] as? Int == 31)
-        #expect(encodedJSON["dueDay"] as? Int == 31)
-        #expect(encodedJSON["statementDayIsLast"] as? Bool == true)
-        #expect(encodedJSON["dueDayIsLast"] == nil)
+        #expect(throws: DecodingError.self) {
+            try JSONDecoder().decode(
+                CreditCardConfig.self,
+                from: #require(invalidStatementDay.data(using: .utf8))
+            )
+        }
+        #expect(throws: DecodingError.self) {
+            try JSONDecoder().decode(
+                CreditCardConfig.self,
+                from: #require(invalidDueDay.data(using: .utf8))
+            )
+        }
     }
 
     @Test func encodesAndDecodesJSONWithDueDay() throws {
