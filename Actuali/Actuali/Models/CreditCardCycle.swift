@@ -9,7 +9,6 @@ struct CreditCardCycle: Equatable, Hashable {
     enum PaymentDue: Equatable, Hashable, Sendable {
         case daysAfter(Int)
         case dayOfMonth(Int)
-        case lastDayOfMonth
     }
 
     let statementDay: Int
@@ -23,7 +22,7 @@ struct CreditCardCycle: Equatable, Hashable {
     var dueOffsetDays: Int {
         switch paymentDue {
         case .daysAfter(let days): days
-        case .dayOfMonth, .lastDayOfMonth: Self.defaultDueOffsetDays
+        case .dayOfMonth: Self.defaultDueOffsetDays
         }
     }
 
@@ -86,14 +85,6 @@ struct CreditCardCycle: Equatable, Hashable {
         switch paymentDue {
         case .daysAfter(let days):
             return statement.adding(days: days)
-        case .lastDayOfMonth:
-            let statementMonthLastDay = DayDate.lastDay(year: statement.year, month: statement.month)
-            let month = statement.day < statementMonthLastDay ? statement : statement.adding(months: 1)
-            return DayDate(
-                year: month.year,
-                month: month.month,
-                day: DayDate.lastDay(year: month.year, month: month.month)
-            )
         case .dayOfMonth(let day):
             // If dueDay > statementDay: payment is due in the same month as statement closing (e.g. 5th -> 25th).
             // If dueDay <= statementDay: payment is due in the following month (e.g. 15th -> 1st).
