@@ -1184,7 +1184,7 @@ final class BudgetStore: ObservableObject {
         }
     }
 
-    /// Mappings from accountId -> statement closing day (1...31 or the last-day sentinel).
+    /// Mappings from accountId -> statement closing day (1...31); explicit month-end is stored as 31 plus an intent flag.
     /// Persisted per budget in the preferences table. An account with a statement day
     /// configured is treated as a credit card with that billing cycle in Actuali.
     var creditCardStatementDays: [String: Int] {
@@ -1249,22 +1249,6 @@ final class BudgetStore: ObservableObject {
                     statementDayIsLast: statementDayIsLast,
                     dueOffsetDays: offset,
                     dueDay: dueDay,
-                    limit: limit
-                )
-            case .lastDayOfMonth:
-                let cycle = CreditCardCycle(
-                    statementDay: day,
-                    statementDayIsLast: statementDayIsLast,
-                    paymentDue: .lastDayOfMonth
-                )
-                let statement = cycle.previousStatementDate()
-                let offset = max(1, statement.days(until: cycle.dueDate(forStatement: statement)))
-                return CreditCardConfig(
-                    statementDay: day,
-                    statementDayIsLast: statementDayIsLast,
-                    dueOffsetDays: offset,
-                    dueDay: 31,
-                    dueDayIsLast: true,
                     limit: limit
                 )
             }
@@ -7611,7 +7595,11 @@ final class BudgetStore: ObservableObject {
         var requests: [(accountId: String, statementDate: DayDate, dueDate: DayDate, liveBalance: Int)] = []
         for account in accounts where !account.closed {
             guard let config = configs[account.id] else { continue }
-            let cycle = CreditCardCycle(statementDay: config.statementDay, paymentDue: config.paymentDue)
+            let cycle = CreditCardCycle(
+                statementDay: config.statementDay,
+                statementDayIsLast: config.statementDayIsLast,
+                paymentDue: config.paymentDue
+            )
             // Keep recent closed statements for the Bills history. The 60-day
             // maximum means these three cover every statement still pending.
             let recentStatements = cycle.recentStatementCycles(today: today).reversed()
