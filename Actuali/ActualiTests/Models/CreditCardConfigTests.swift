@@ -34,12 +34,11 @@ struct CreditCardConfigTests {
         #expect(decoded.limit == nil)
     }
 
-    @Test func encodesAndDecodesLastDayFlagsWithoutSpecialDayNumbers() throws {
+    @Test func encodesAndDecodesExplicitLastStatementDay() throws {
         let config = CreditCardConfig(
             statementDay: 31,
             statementDayIsLast: true,
-            dueDay: 31,
-            dueDayIsLast: true
+            dueDay: 31
         )
 
         let data = try JSONEncoder().encode(config)
@@ -49,13 +48,14 @@ struct CreditCardConfigTests {
         #expect(decoded.statementDay == 31)
         #expect(decoded.statementDayIsLast)
         #expect(decoded.dueDay == 31)
-        #expect(decoded.dueDayIsLast)
-        #expect(decoded.paymentDue == .lastDayOfMonth)
+        #expect(decoded.paymentDue == .dayOfMonth(31))
         #expect(json["statementDay"] as? Int == 31)
+        #expect(json["statementDayIsLast"] as? Bool == true)
         #expect(json["dueDay"] as? Int == 31)
+        #expect(json["dueDayIsLast"] == nil)
     }
 
-    @Test func migratesLegacySentinelValuesToDayAndFlags() throws {
+    @Test func normalizesLegacyMonthEndValues() throws {
         let json = """
         {
             "statementDay": 32,
@@ -71,12 +71,11 @@ struct CreditCardConfigTests {
         #expect(decoded.statementDay == 31)
         #expect(decoded.statementDayIsLast)
         #expect(decoded.dueDay == 31)
-        #expect(decoded.dueDayIsLast)
-        #expect(decoded.paymentDue == .lastDayOfMonth)
+        #expect(decoded.paymentDue == .dayOfMonth(31))
         #expect(encodedJSON["statementDay"] as? Int == 31)
         #expect(encodedJSON["dueDay"] as? Int == 31)
         #expect(encodedJSON["statementDayIsLast"] as? Bool == true)
-        #expect(encodedJSON["dueDayIsLast"] as? Bool == true)
+        #expect(encodedJSON["dueDayIsLast"] == nil)
     }
 
     @Test func encodesAndDecodesJSONWithDueDay() throws {
