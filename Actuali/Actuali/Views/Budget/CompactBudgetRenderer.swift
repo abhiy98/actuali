@@ -404,6 +404,7 @@ struct CompactCategoryBudgetRow: View {
                     }
                     .buttonStyle(.borderless)
                     .accessibilityLabel(editBudgetAccessibilityLabel)
+                    .accessibilityIdentifier("compactBudgetedAmount.\(category.categoryName)")
                 }
 
                 if showsSpent {
@@ -451,6 +452,7 @@ struct CompactCategoryBudgetRow: View {
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel(editBudgetAccessibilityLabel)
+                .accessibilityIdentifier("compactBudgetedAmount.\(category.categoryName)")
             }
 
             if showsSpent {
@@ -726,6 +728,7 @@ struct CompactIncomeCategoryRow: View {
     let isTrackingBudget: Bool
     let showsSpent: Bool
     let showsBudgeted: Bool
+    var onEditBudget: (IncomeCategory) -> Void = { _ in }
     var onShowTransactions: (IncomeCategory, String?) -> Void = { _, _ in }
 
     private var layout: CompactBudgetTableLayout {
@@ -738,7 +741,14 @@ struct CompactIncomeCategoryRow: View {
                 VStack(alignment: .leading, spacing: 8) {
                     nameButton
                     if layout.incomeColumns.contains(.budgeted) {
-                        stackedReadOnlyAmount(label: CompactBudgetColumn.budgeted.label(locale: locale, bundle: .main), amount: income.budgeted)
+                        Button {
+                            onEditBudget(income)
+                        } label: {
+                            stackedBudgetedAmount(label: CompactBudgetColumn.budgeted.label(locale: locale, bundle: .main), amount: income.budgeted)
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel(editBudgetAccessibilityLabel)
+                        .accessibilityIdentifier("compactIncomeBudgeted.\(income.categoryId)")
                     }
                     Button {
                         onShowTransactions(income, income.month)
@@ -808,25 +818,27 @@ struct CompactIncomeCategoryRow: View {
         ))
     }
 
-    private func stackedReadOnlyAmount(label: String, amount: Int) -> some View {
+    private func stackedBudgetedAmount(label: String, amount: Int) -> some View {
         HStack {
             Text(label)
                 .foregroundStyle(.secondary)
             Spacer()
             CompactAmountText(amount: amount)
         }
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel(budgetedAccessibilityLabel)
-        .accessibilityIdentifier("compactIncomeBudgeted.\(income.categoryId)")
     }
 
     @ViewBuilder
     private func compactColumn(_ column: CompactBudgetColumn?) -> some View {
         switch column {
         case .budgeted:
-            CompactAmountText(amount: income.budgeted)
-                .accessibilityLabel(budgetedAccessibilityLabel)
-                .accessibilityIdentifier("compactIncomeBudgeted.\(income.categoryId)")
+            Button {
+                onEditBudget(income)
+            } label: {
+                CompactAmountText(amount: income.budgeted)
+            }
+            .buttonStyle(.borderless)
+            .accessibilityLabel(editBudgetAccessibilityLabel)
+            .accessibilityIdentifier("compactIncomeBudgeted.\(income.categoryId)")
         case .received:
             Button {
                 onShowTransactions(income, income.month)
@@ -840,8 +852,8 @@ struct CompactIncomeCategoryRow: View {
         }
     }
 
-    private var budgetedAccessibilityLabel: String {
-        CompactBudgetAccessibility.incomeBudgeted(
+    private var editBudgetAccessibilityLabel: String {
+        CompactBudgetAccessibility.editBudget(
             category: income.categoryName,
             amount: budgetStore.displayBalance(income.budgeted),
             locale: locale,

@@ -224,21 +224,50 @@ final class BudgetDisplayStyleUITests: XCTestCase {
         }
         XCTAssertTrue(salary.waitForExistence(timeout: 5),
                       "Income remains expanded")
-        let salaryBudget = app.descendants(matching: .any).matching(
-            NSPredicate(format: "label BEGINSWITH 'Budgeted for Salary, '")
+        let salaryBudget = app.buttons.matching(
+            NSPredicate(format: "label BEGINSWITH 'Edit budgeted amount for Salary'")
         ).firstMatch
         XCTAssertTrue(
-            salaryBudget.exists,
-            "tracking Income's read-only budget needs its own currency-aware VoiceOver context"
+            salaryBudget.waitForExistence(timeout: 5),
+            "tracking income's Budgeted amount should open the same editor as expenses"
         )
         // "$" in a US locale, "USD" elsewhere; both are currency-aware.
         let salaryAmount = salaryBudget.label
         XCTAssertTrue(salaryAmount.contains("$") || salaryAmount.contains("USD"),
                       "the amount should be announced with its currency: \(salaryAmount)")
-        XCTAssertFalse(
-            salaryBudget.elementType == .button,
-            "tracking Income budget remains read-only in Compact"
-        )
+        salaryBudget.tap()
+        XCTAssertTrue(app.navigationBars["Salary"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.textFields.firstMatch.exists)
+        app.buttons["Cancel"].tap()
+    }
+
+
+    @MainActor
+    func testCleanTrackingIncomeBudgetCanBeEdited() {
+        let app = XCUIApplication()
+        app.launchArguments = [
+            "-loadDemoData",
+            "-loadTrackingDemoData",
+            "-budgetDisplayStyle", "clean",
+            "-collapsedBudgetGroups", "",
+            "-initialTab", "1",
+        ]
+        app.launch()
+
+        let salaryBudget = app.buttons.matching(
+            NSPredicate(format: "label BEGINSWITH 'Edit budgeted amount for Salary'")
+        ).firstMatch
+        var scrollsLeft = 12
+        while !salaryBudget.isHittable, scrollsLeft > 0 {
+            app.swipeUp(velocity: .slow)
+            scrollsLeft -= 1
+        }
+        XCTAssertTrue(salaryBudget.isHittable, "Salary's budgeted amount should be editable in Clean")
+
+        salaryBudget.tap()
+        XCTAssertTrue(app.navigationBars["Salary"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.textFields.firstMatch.exists)
+        app.buttons["Cancel"].tap()
     }
 
     @MainActor
@@ -301,6 +330,7 @@ final class BudgetDisplayStyleUITests: XCTestCase {
             "-loadDemoData",
             "-budgetDisplayStyle", "compact",
             "-showCompactBudgetOverview", "YES",
+            "-showBudgetedAmounts", "YES",
             "-collapsedBudgetGroups", "",
             "-initialTab", "1",
             "-UIPreferredContentSizeCategoryName",
@@ -313,18 +343,30 @@ final class BudgetDisplayStyleUITests: XCTestCase {
                 .waitForExistence(timeout: 10),
             "accessibility text sizes select the stacked overview"
         )
-        let editGroceries = app.buttons.matching(
-            NSPredicate(format: "label BEGINSWITH 'Edit budgeted amount for Groceries'")
-        ).firstMatch
-        var scrollsLeft = 8
-        while !editGroceries.exists, scrollsLeft > 0 {
-            app.swipeUp()
-            scrollsLeft -= 1
+
+        // Query this action by its test identifier instead of its OS-dependent
+        // Button/PopUpButton type or a localized accessibility label.
+        let editGroceries = app.descendants(matching: .any)["compactBudgetedAmount.Groceries"]
+        var attempts = 0
+        while !editGroceries.isHittable, attempts < 20 {
+            // Short drags avoid skipping tall rows at accessibility text sizes.
+            let start = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.86))
+            let end = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.76))
+            start.press(forDuration: 0.05, thenDragTo: end)
+            attempts += 1
         }
         XCTAssertTrue(
-            editGroceries.waitForExistence(timeout: 5),
-            "stacking keeps category amount actions available without compact-cell shrinking"
+            editGroceries.isHittable,
+            "the stacked Budgeted action remains reachable at accessibility text sizes"
         )
+
+        editGroceries.tap()
+        XCTAssertTrue(
+            app.navigationBars["Groceries"].waitForExistence(timeout: 5),
+            "the stacked Budgeted action opens the editor"
+        )
+        XCTAssertTrue(app.textFields.firstMatch.waitForExistence(timeout: 5))
+        app.buttons["Cancel"].tap()
     }
 
     @MainActor
@@ -376,7 +418,11 @@ final class BudgetDisplayStyleUITests: XCTestCase {
         ]
         app.launch()
 
-        let groceries = app.buttons["Details for Groceries"].firstMatch
+        // Query the label independently of XCTest's Button/PopUpButton
+        // classification, which differs between legacy and modern attributes.
+        let groceries = app.descendants(matching: .any).matching(
+            NSPredicate(format: "label == %@", "Details for Groceries")
+        ).firstMatch
         XCTAssertTrue(groceries.waitForExistence(timeout: 10))
         groceries.tap()
 
