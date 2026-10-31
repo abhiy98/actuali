@@ -87,6 +87,17 @@ struct DepositConfigTests {
         #expect(config.monthsElapsed(on: DayDate(year: 2027, month: 1, day: 15)) == 12)
     }
 
+    @Test func aMonthEndDepositCountsItsClampedMaturityAnniversary() {
+        let config = DepositConfig(
+            kind: .fixed, amount: 10_000_000, annualRatePercent: 7,
+            compounding: .quarterly, openedOn: DayDate(year: 2026, month: 1, day: 31), termMonths: 3
+        )
+
+        #expect(config.maturityDate == DayDate(year: 2026, month: 4, day: 30))
+        #expect(config.monthsElapsed(on: config.maturityDate) == 3)
+        #expect(config.maturityValue > config.amount)
+    }
+
     @Test func aDateBeforeOpeningReadsAsMonthZero() {
         #expect(deposit().monthsElapsed(on: DayDate(year: 2025, month: 6, day: 1)) == 0)
     }
@@ -135,6 +146,13 @@ struct DepositConfigTests {
         #expect(config.value(on: opened) == 500_000)
         #expect(config.deposited(on: opened) == 500_000)
         #expect(config.interestEarned(on: opened) == 0)
+    }
+
+    @Test func dailyCompoundingUpdatesAfterOneCalendarDay() {
+        let config = deposit(compounding: .daily, termMonths: 12)
+
+        #expect(config.value(on: opened) == config.amount)
+        #expect(config.value(on: opened.adding(days: 1)) == 10_001_918)
     }
 
     @Test func totalInterestOnARecurringDepositCountsEveryInstalment() {

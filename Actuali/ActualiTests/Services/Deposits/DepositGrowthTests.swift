@@ -35,18 +35,49 @@ struct DepositGrowthTests {
     // MARK: - Compounding periods
 
     @Test func periodsCountWholeCompoundingIntervalsOnly() {
-        #expect(DepositGrowth.completedPeriods(afterMonths: 0, compounding: .quarterly) == 0)
-        #expect(DepositGrowth.completedPeriods(afterMonths: 2, compounding: .quarterly) == 0)
-        #expect(DepositGrowth.completedPeriods(afterMonths: 3, compounding: .quarterly) == 1)
-        #expect(DepositGrowth.completedPeriods(afterMonths: 11, compounding: .quarterly) == 3)
-        #expect(DepositGrowth.completedPeriods(afterMonths: 12, compounding: .monthly) == 12)
-        #expect(DepositGrowth.completedPeriods(afterMonths: 12, compounding: .annually) == 1)
+        let start = DayDate(year: 2026, month: 1, day: 15)
+
+        #expect(DepositGrowth.completedPeriods(from: start, to: start, compounding: .quarterly) == 0)
+        #expect(DepositGrowth.completedPeriods(from: start, to: start.adding(months: 2), compounding: .quarterly) == 0)
+        #expect(DepositGrowth.completedPeriods(from: start, to: start.adding(months: 3), compounding: .quarterly) == 1)
+        #expect(DepositGrowth.completedPeriods(from: start, to: start.adding(months: 11), compounding: .quarterly) == 3)
+        #expect(DepositGrowth.completedPeriods(from: start, to: start.adding(months: 12), compounding: .monthly) == 12)
+        #expect(DepositGrowth.completedPeriods(from: start, to: start.adding(months: 12), compounding: .annually) == 1)
     }
 
-    @Test func everyCompoundingFrequencyDividesTheYearEvenly() {
+    @Test func dayBasedFrequenciesCountOnlyWholePeriods() {
+        let start = DayDate(year: 2026, month: 1, day: 1)
+
+        #expect(DepositGrowth.completedPeriods(from: start, to: start, compounding: .daily) == 0)
+        #expect(DepositGrowth.completedPeriods(from: start, to: start.adding(days: 1), compounding: .daily) == 1)
+        #expect(DepositGrowth.completedPeriods(from: start, to: start.adding(days: 6), compounding: .weekly) == 0)
+        #expect(DepositGrowth.completedPeriods(from: start, to: start.adding(days: 7), compounding: .weekly) == 1)
+        #expect(DepositGrowth.completedPeriods(from: start, to: start.adding(days: 13), compounding: .biWeekly) == 0)
+        #expect(DepositGrowth.completedPeriods(from: start, to: start.adding(days: 14), compounding: .biWeekly) == 1)
+    }
+
+    @Test func monthBasedFrequenciesRespectClampedCalendarAnniversaries() {
+        let start = DayDate(year: 2026, month: 1, day: 31)
+        let quarterEnd = start.adding(months: 3)
+
+        #expect(quarterEnd == DayDate(year: 2026, month: 4, day: 30))
+        #expect(DepositGrowth.completedPeriods(
+            from: start, to: quarterEnd.adding(days: -1), compounding: .quarterly
+        ) == 0)
+        #expect(DepositGrowth.completedPeriods(from: start, to: quarterEnd, compounding: .quarterly) == 1)
+    }
+
+    @Test func eachCompoundingFrequencyHasOneWholeCalendarInterval() {
         for frequency in DepositConfig.Compounding.allCases {
-            #expect(frequency.periodMonths * frequency.rawValue == 12)
+            if let months = frequency.periodMonths {
+                #expect(months * frequency.rawValue == 12)
+            } else {
+                #expect(frequency.periodDays != nil)
+            }
         }
+        #expect(DepositConfig.Compounding.daily.rawValue == 365)
+        #expect(DepositConfig.Compounding.weekly.rawValue == 52)
+        #expect(DepositConfig.Compounding.biWeekly.rawValue == 26)
     }
 
     // MARK: - Fixed deposits
@@ -88,6 +119,12 @@ struct DepositGrowthTests {
         #expect(monthly == 14_176_253)
         #expect(annual < quarterly)
         #expect(quarterly < monthly)
+    }
+
+    @Test func fixedDepositsUseActualDaysForDailyWeeklyAndBiWeeklyCompounding() {
+        #expect(DepositGrowth.value(fixedDeposit(compounding: .daily), afterMonths: 60) == 14_192_921)
+        #expect(DepositGrowth.value(fixedDeposit(compounding: .weekly), afterMonths: 60) == 14_187_336)
+        #expect(DepositGrowth.value(fixedDeposit(compounding: .biWeekly), afterMonths: 60) == 14_184_003)
     }
 
     @Test func aZeroRateFixedDepositReturnsExactlyWhatWentIn() {
@@ -135,6 +172,12 @@ struct DepositGrowthTests {
     @Test func aZeroRateRecurringDepositIsJustTheInstalmentsAddedUp() {
         let deposit = recurringDeposit(rate: 0)
         #expect(DepositGrowth.value(deposit, afterMonths: 24) == 12_000_000)
+    }
+
+    @Test func recurringDepositsUseActualDaysForDailyWeeklyAndBiWeeklyCompounding() {
+        #expect(DepositGrowth.value(recurringDeposit(compounding: .daily), afterMonths: 24) == 12_920_086)
+        #expect(DepositGrowth.value(recurringDeposit(compounding: .weekly), afterMonths: 24) == 12_913_992)
+        #expect(DepositGrowth.value(recurringDeposit(compounding: .biWeekly), afterMonths: 24) == 12_903_933)
     }
 
     // MARK: - Degenerate inputs

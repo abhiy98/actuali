@@ -21,20 +21,37 @@ struct DepositConfig: Codable, Equatable, Hashable, Sendable {
         case recurring
     }
 
-    /// How often interest is credited. Quarterly is the default because it is
-    /// what fixed and recurring deposits overwhelmingly use.
+    /// How often interest is credited. Quarterly remains the default.
     ///
-    /// The raw value is compounds per year, and every case divides 12 evenly so
-    /// `periodMonths` is exact — the arithmetic counts whole months and never
-    /// needs a fractional period.
+    /// The raw value is compounding periods per year, which is also the
+    /// denominator used for the nominal annual rate. Day-based schedules use
+    /// actual calendar days for whole-period boundaries.
     enum Compounding: Int, Codable, Sendable, CaseIterable {
-        case annually = 1
-        case semiAnnually = 2
-        case quarterly = 4
+        case daily = 365
+        case weekly = 52
+        case biWeekly = 26
         case monthly = 12
+        case quarterly = 4
+        case semiAnnually = 2
+        case annually = 1
 
-        var periodMonths: Int {
-            12 / rawValue
+        var periodMonths: Int? {
+            switch self {
+            case .daily, .weekly, .biWeekly: nil
+            case .monthly: 1
+            case .quarterly: 3
+            case .semiAnnually: 6
+            case .annually: 12
+            }
+        }
+
+        var periodDays: Int? {
+            switch self {
+            case .daily: 1
+            case .weekly: 7
+            case .biWeekly: 14
+            case .monthly, .quarterly, .semiAnnually, .annually: nil
+            }
         }
     }
 
@@ -120,9 +137,9 @@ extension DepositConfig {
     func monthsElapsed(on date: DayDate = .today()) -> Int {
         guard openedOn < date else { return 0 }
         var months = (date.year - openedOn.year) * 12 + (date.month - openedOn.month)
-        // Part-way through a month doesn't count: interest credits on whole
-        // periods, and a month that hasn't finished hasn't been deposited into.
-        if date.day < openedOn.day {
+        // Recurring instalments land on calendar-month anniversaries. Compare
+        // with the clamped date so Jan 31 + 1 month is Feb 28.
+        if openedOn.adding(months: months) > date {
             months -= 1
         }
         return max(0, months)
@@ -150,12 +167,12 @@ extension DepositConfig {
 extension DepositConfig {
     /// What the deposit is worth on `date`, in cents.
     func value(on date: DayDate = .today()) -> Int {
-        DepositGrowth.value(self, afterMonths: monthsElapsed(on: date))
+        DepositGrowth.value(self, on: date)
     }
 
     /// What it pays out at the end of the term.
     var maturityValue: Int {
-        DepositGrowth.value(self, afterMonths: termMonths)
+        DepositGrowth.value(self, on: maturityDate)
     }
 
     /// What has actually gone in by `date` — the lump sum, or the instalments

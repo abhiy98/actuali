@@ -15,10 +15,27 @@ enum DepositGrowth {
     /// close, and it stops a corrupt term from looping forever.
     static let maxTermMonths = LoanAmortization.maxMonths
 
-    /// Compounding periods completed after `months` have elapsed.
-    static func completedPeriods(afterMonths months: Int, compounding: DepositConfig.Compounding) -> Int {
-        guard months > 0 else { return 0 }
-        return months / compounding.periodMonths
+    /// Completed periods between two calendar days. Daily, weekly and
+    /// bi-weekly compounding use actual elapsed days; longer frequencies use
+    /// clamped month anniversaries so Jan 31 + 3 months is one full quarter.
+    static func completedPeriods(
+        from start: DayDate,
+        to end: DayDate,
+        compounding: DepositConfig.Compounding
+    ) -> Int {
+        guard start < end else { return 0 }
+        if let periodDays = compounding.periodDays {
+            return start.days(until: end) / periodDays
+        }
+        return wholeMonthsElapsed(from: start, to: end) / (compounding.periodMonths ?? 1)
+    }
+
+    private static func wholeMonthsElapsed(from start: DayDate, to end: DayDate) -> Int {
+        var months = (end.year - start.year) * 12 + end.month - start.month
+        if start.adding(months: months) > end {
+            months -= 1
+        }
+        return max(0, months)
     }
 
     /// One amount compounded for a number of whole periods.
@@ -41,8 +58,17 @@ enum DepositGrowth {
     static func value(_ config: DepositConfig, afterMonths: Int) -> Int {
         let term = min(max(0, config.termMonths), maxTermMonths)
         let months = min(max(0, afterMonths), term)
+        return value(config, on: config.openedOn.adding(months: months))
+    }
+
+    /// What `config` is worth on a calendar day, in cents.
+    static func value(_ config: DepositConfig, on date: DayDate) -> Int {
+        let term = min(max(0, config.termMonths), maxTermMonths)
+        let maturityDate = config.openedOn.adding(months: term)
+        let date = min(max(date, config.openedOn), maturityDate)
         guard config.amount > 0 else { return 0 }
 
+        let months = wholeMonthsElapsed(from: config.openedOn, to: date)
         switch config.kind {
         case .fixed:
             // One lump sum, compounding for as long as it has been in.
@@ -50,21 +76,21 @@ enum DepositGrowth {
                 config.amount,
                 annualRatePercent: config.annualRatePercent,
                 compounding: config.compounding,
-                periods: completedPeriods(afterMonths: months, compounding: config.compounding)
+                periods: completedPeriods(from: config.openedOn, to: date, compounding: config.compounding)
             ).rounded())
 
         case .recurring:
-            // Each instalment compounds only for the time since it was paid,
-            // so they can't share one exponent — the first has the whole term
-            // behind it and the last has barely a month.
+            // Each monthly instalment compounds from the day it was added.
             var total = 0.0
             for instalment in 0..<instalmentsMade(config, afterMonths: months) {
+                let instalmentDate = config.openedOn.adding(months: instalment)
                 total += compounded(
                     config.amount,
                     annualRatePercent: config.annualRatePercent,
                     compounding: config.compounding,
                     periods: completedPeriods(
-                        afterMonths: months - instalment,
+                        from: instalmentDate,
+                        to: date,
                         compounding: config.compounding
                     )
                 )

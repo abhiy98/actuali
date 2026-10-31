@@ -251,6 +251,13 @@ struct DepositEditorView: View {
                 )
                 .foregroundStyle(.secondary)
                 .accessibilityIdentifier("depositEditor.matures")
+
+                LabeledContent(
+                    String(localized: "Maturity Value"),
+                    value: budgetStore.displayBalance(config.maturityValue)
+                )
+                .foregroundStyle(.secondary)
+                .accessibilityIdentifier("depositEditor.maturityValue")
             }
         } header: {
             Text(String(localized: "Deposit Details"))
@@ -261,10 +268,13 @@ struct DepositEditorView: View {
 
     nonisolated static func compoundingLabel(_ frequency: DepositConfig.Compounding) -> String {
         switch frequency {
-        case .annually: String(localized: "Annually")
-        case .semiAnnually: String(localized: "Semi-annually")
-        case .quarterly: String(localized: "Quarterly")
+        case .daily: String(localized: "Daily")
+        case .weekly: String(localized: "Weekly")
+        case .biWeekly: String(localized: "Bi-weekly")
         case .monthly: String(localized: "Monthly")
+        case .quarterly: String(localized: "Quarterly")
+        case .semiAnnually: String(localized: "Semi-annually")
+        case .annually: String(localized: "Annually")
         }
     }
 }
