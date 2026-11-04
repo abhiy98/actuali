@@ -207,6 +207,22 @@ struct NewTransactionNotifierTests {
         #expect(center.added.isEmpty)
     }
 
+    @Test func notificationPermissionRequestsAreUnified() async throws {
+        let center = NotificationCenterSpy()
+
+        _ = try await AppNotificationAuthorization.request(using: center)
+
+        #expect(center.authorizationOptions == [.alert, .sound, .badge])
+    }
+
+    @Test func appIconBadgeUpdaterUsesTheRequestedCount() async {
+        let center = NotificationCenterSpy()
+
+        await AppIconBadgeUpdater.update(7, using: center)
+
+        #expect(center.badgeCounts == [7])
+    }
+
     @Test @MainActor func notifyPostsWhenNotificationsEnabled() async {
         let center = NotificationCenterSpy()
 
@@ -216,13 +232,16 @@ struct NewTransactionNotifierTests {
         )
 
         #expect(center.added.map(\.identifier) == [NewTransactionNotifier.requestIdentifier])
+        #expect(center.authorizationOptions == [.alert, .sound, .badge])
     }
 }
 
 private final class NotificationCenterSpy: NotificationPosting, @unchecked Sendable {
     var authorizationRequested = false
+    var authorizationOptions: UNAuthorizationOptions?
     var status: UNAuthorizationStatus = .notDetermined
     var added: [UNNotificationRequest] = []
+    var badgeCounts: [Int] = []
 
     func authorizationStatus() async -> UNAuthorizationStatus {
         status
@@ -230,8 +249,13 @@ private final class NotificationCenterSpy: NotificationPosting, @unchecked Senda
 
     func requestAuthorization(options: UNAuthorizationOptions) async throws -> Bool {
         authorizationRequested = true
+        authorizationOptions = options
         status = .authorized
         return true
+    }
+
+    func setBadgeCount(_ count: Int) async throws {
+        badgeCounts.append(count)
     }
 
     func add(_ request: UNNotificationRequest) async throws {

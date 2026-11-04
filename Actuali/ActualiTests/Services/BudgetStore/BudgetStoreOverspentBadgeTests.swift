@@ -70,11 +70,16 @@ struct BudgetStoreOverspentBadgeTests {
     @Test func appIconBadgeAddsOnlyEnabledCounts() {
         let store = BudgetStore.previewInstance()
         store.uncategorizedCount = 4
-        store.currentBudgetMonth = makeMonth(availables: [-100, 500, -1])
+        store.currentBudgetMonth = makeMonth(availables: [-100, -100, -100, -100])
+        store.widgetBudgetMonth = makeMonth(availables: [-100, 500, -1])
         store.showOverspentBadge = false
         store.showAppIconBadgeForUncategorizedTransactions = true
         store.showAppIconBadgeForOverspentCategories = true
 
+        #expect(store.appIconBadgeCount == 6)
+
+        // Browsing a historical month must not change the Home Screen badge.
+        store.currentBudgetMonth = makeMonth(availables: [-100, -100, -100, -100, -100])
         #expect(store.appIconBadgeCount == 6)
 
         store.showAppIconBadgeForOverspentCategories = false
@@ -96,5 +101,37 @@ struct BudgetStoreOverspentBadgeTests {
         let store = BudgetStore.previewInstance()
         #expect(!store.showAppIconBadgeForUncategorizedTransactions)
         #expect(!store.showAppIconBadgeForOverspentCategories)
+    }
+
+    @Test func appIconBadgePreferencesRestoreFromUserDefaults() {
+        let defaults = UserDefaults.standard
+        let uncategorizedKey = "showAppIconBadgeForUncategorizedTransactions"
+        let overspentKey = "showAppIconBadgeForOverspentCategories"
+        let oldUncategorized = defaults.object(forKey: uncategorizedKey)
+        let oldOverspent = defaults.object(forKey: overspentKey)
+        defer {
+            if let oldUncategorized {
+                defaults.set(oldUncategorized, forKey: uncategorizedKey)
+            } else {
+                defaults.removeObject(forKey: uncategorizedKey)
+            }
+            if let oldOverspent {
+                defaults.set(oldOverspent, forKey: overspentKey)
+            } else {
+                defaults.removeObject(forKey: overspentKey)
+            }
+        }
+
+        defaults.removeObject(forKey: uncategorizedKey)
+        defaults.removeObject(forKey: overspentKey)
+        let initial = BudgetStore.previewInstanceLoadingPersistedPreferencesForTesting()
+        #expect(!initial.showAppIconBadgeForUncategorizedTransactions)
+        #expect(!initial.showAppIconBadgeForOverspentCategories)
+
+        initial.showAppIconBadgeForUncategorizedTransactions = true
+        initial.showAppIconBadgeForOverspentCategories = true
+        let restored = BudgetStore.previewInstanceLoadingPersistedPreferencesForTesting()
+        #expect(restored.showAppIconBadgeForUncategorizedTransactions)
+        #expect(restored.showAppIconBadgeForOverspentCategories)
     }
 }

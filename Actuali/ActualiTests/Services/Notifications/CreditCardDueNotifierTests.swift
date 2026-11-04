@@ -45,6 +45,21 @@ struct CreditCardDueNotifierTests {
         MainActor.preconditionIsolated()
     }
 
+    @Test func notificationPermissionRequestsIncludeBadgeWithAlertsAndSound() async {
+        let notifier = CreditCardDueNotifier()
+        let center = FakeCreditCardNotificationCenter()
+
+        await notifier.scheduleNotifications(
+            accounts: [],
+            cycles: [:],
+            currencyCode: "USD",
+            settings: makeDefaults(enabled: true),
+            center: center
+        )
+
+        #expect(center.authorizationOptions == [.alert, .sound, .badge])
+    }
+
     @Test func unchangedInputsSkipSchedulingButChangesStillSchedule() async {
         let notifier = CreditCardDueNotifier()
         let center = FakeCreditCardNotificationCenter()
@@ -372,7 +387,9 @@ private final class FakeCreditCardNotificationCenter: NotificationPosting, @unch
     var authorizationRequests = 0
     var failAdds = false
     var status: UNAuthorizationStatus = .notDetermined
+    var authorizationOptions: UNAuthorizationOptions?
     var added: [UNNotificationRequest] = []
+    var badgeCounts: [Int] = []
     var removedIdentifiers: [String] = []
 
     func authorizationStatus() async -> UNAuthorizationStatus {
@@ -382,8 +399,13 @@ private final class FakeCreditCardNotificationCenter: NotificationPosting, @unch
     func requestAuthorization(options: UNAuthorizationOptions) async throws -> Bool {
         authorizationRequested = true
         authorizationRequests += 1
+        authorizationOptions = options
         status = .authorized
         return true
+    }
+
+    func setBadgeCount(_ count: Int) async throws {
+        badgeCounts.append(count)
     }
 
     func add(_ request: UNNotificationRequest) async throws {
