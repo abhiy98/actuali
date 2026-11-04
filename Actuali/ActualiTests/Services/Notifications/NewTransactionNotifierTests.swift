@@ -207,20 +207,56 @@ struct NewTransactionNotifierTests {
         #expect(center.added.isEmpty)
     }
 
-    @Test func notificationPermissionRequestsAreUnified() async throws {
+    @Test func notificationPermissionRequestsAreUnifiedWhenUndetermined() async throws {
         let center = NotificationCenterSpy()
 
-        _ = try await AppNotificationAuthorization.request(using: center)
+        let firstResult = try await AppNotificationAuthorization.requestIfNeeded(using: center)
+        let secondResult = try await AppNotificationAuthorization.requestIfNeeded(using: center)
 
+        #expect(firstResult)
+        #expect(secondResult)
         #expect(center.authorizationOptions == [.alert, .sound, .badge])
+        #expect(center.authorizationRequests == 1)
     }
 
-    @Test func appIconBadgeUpdaterUsesTheRequestedCount() async {
+    @Test func notificationPermissionSkipsRepeatedRequestWhenAuthorized() async throws {
+        let center = NotificationCenterSpy()
+        center.status = .authorized
+
+        let granted = try await AppNotificationAuthorization.requestIfNeeded(using: center)
+
+        #expect(granted)
+        #expect(center.authorizationRequests == 0)
+        #expect(center.authorizationOptions == nil)
+    }
+
+    @Test func notificationPermissionDoesNotRetryAfterDenial() async throws {
+        let center = NotificationCenterSpy()
+        center.status = .denied
+
+        let granted = try await AppNotificationAuthorization.requestIfNeeded(using: center)
+
+        #expect(!granted)
+        #expect(center.authorizationRequests == 0)
+    }
+
+    @Test func provisionalNotificationPermissionIsAlreadyGranted() async throws {
+        let center = NotificationCenterSpy()
+        center.status = .provisional
+
+        let granted = try await AppNotificationAuthorization.requestIfNeeded(using: center)
+
+        #expect(granted)
+        #expect(center.authorizationRequests == 0)
+    }
+
+    @Test func appIconBadgeUpdaterClampsNegativeCountsToZero() async {
         let center = NotificationCenterSpy()
 
+        await AppIconBadgeUpdater.update(-7, using: center)
         await AppIconBadgeUpdater.update(7, using: center)
 
-        #expect(center.badgeCounts == [7])
+        #expect(center.badgeCounts == [0, 7])
     }
 
     @Test @MainActor func notifyPostsWhenNotificationsEnabled() async {
@@ -238,6 +274,7 @@ struct NewTransactionNotifierTests {
 
 private final class NotificationCenterSpy: NotificationPosting, @unchecked Sendable {
     var authorizationRequested = false
+    var authorizationRequests = 0
     var authorizationOptions: UNAuthorizationOptions?
     var status: UNAuthorizationStatus = .notDetermined
     var added: [UNNotificationRequest] = []
@@ -249,6 +286,7 @@ private final class NotificationCenterSpy: NotificationPosting, @unchecked Senda
 
     func requestAuthorization(options: UNAuthorizationOptions) async throws -> Bool {
         authorizationRequested = true
+        authorizationRequests += 1
         authorizationOptions = options
         status = .authorized
         return true

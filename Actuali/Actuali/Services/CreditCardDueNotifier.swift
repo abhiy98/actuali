@@ -82,7 +82,7 @@ final class CreditCardDueNotifier {
             granted = true
         case .notDetermined:
             do {
-                granted = try await AppNotificationAuthorization.request(using: center)
+                granted = try await AppNotificationAuthorization.requestIfNeeded(using: center)
                 guard lastInputs == inputs else { return }
             } catch {
                 if lastInputs == inputs {

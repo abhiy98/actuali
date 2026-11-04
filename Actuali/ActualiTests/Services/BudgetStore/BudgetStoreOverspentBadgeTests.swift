@@ -62,8 +62,19 @@ struct BudgetStoreOverspentBadgeTests {
     }
 
     @Test func settingDefaultsToOn() {
-        UserDefaults.standard.removeObject(forKey: "showOverspentBadge")
-        let store = BudgetStore.previewInstance()
+        let defaults = UserDefaults.standard
+        let key = "showOverspentBadge"
+        let previousValue = defaults.object(forKey: key)
+        defer {
+            if let previousValue {
+                defaults.set(previousValue, forKey: key)
+            } else {
+                defaults.removeObject(forKey: key)
+            }
+        }
+
+        defaults.removeObject(forKey: key)
+        let store = BudgetStore.previewInstanceLoadingPersistedPreferencesForTesting()
         #expect(store.showOverspentBadge)
     }
 
@@ -95,10 +106,26 @@ struct BudgetStoreOverspentBadgeTests {
 
     @Test func appIconBadgePreferencesDefaultToOff() {
         let defaults = UserDefaults.standard
-        defaults.removeObject(forKey: "showAppIconBadgeForUncategorizedTransactions")
-        defaults.removeObject(forKey: "showAppIconBadgeForOverspentCategories")
+        let uncategorizedKey = "showAppIconBadgeForUncategorizedTransactions"
+        let overspentKey = "showAppIconBadgeForOverspentCategories"
+        let oldUncategorized = defaults.object(forKey: uncategorizedKey)
+        let oldOverspent = defaults.object(forKey: overspentKey)
+        defer {
+            if let oldUncategorized {
+                defaults.set(oldUncategorized, forKey: uncategorizedKey)
+            } else {
+                defaults.removeObject(forKey: uncategorizedKey)
+            }
+            if let oldOverspent {
+                defaults.set(oldOverspent, forKey: overspentKey)
+            } else {
+                defaults.removeObject(forKey: overspentKey)
+            }
+        }
 
-        let store = BudgetStore.previewInstance()
+        defaults.removeObject(forKey: uncategorizedKey)
+        defaults.removeObject(forKey: overspentKey)
+        let store = BudgetStore.previewInstanceLoadingPersistedPreferencesForTesting()
         #expect(!store.showAppIconBadgeForUncategorizedTransactions)
         #expect(!store.showAppIconBadgeForOverspentCategories)
     }

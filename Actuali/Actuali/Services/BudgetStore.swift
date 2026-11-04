@@ -1979,13 +1979,23 @@ final class BudgetStore: ObservableObject {
     }
     #endif
 
+    /// Shared by production and test-only loaders so persisted Bool defaults
+    /// cannot drift between the two initialization paths.
+    private static func persistedBool(
+        _ key: String,
+        default defaultValue: Bool,
+        in defaults: UserDefaults
+    ) -> Bool {
+        defaults.object(forKey: key) == nil ? defaultValue : defaults.bool(forKey: key)
+    }
+
     private init() {
         let defaults = UserDefaults.standard
         // Read stored Bool values and UI-test `YES`/`NO` launch overrides through the
         // same path. We migrated from `as? Bool` because NSArgumentDomain exposes those
         // overrides as strings; checking for existence first preserves non-false defaults.
         func persistedBool(_ key: String, default defaultValue: Bool) -> Bool {
-            defaults.object(forKey: key) == nil ? defaultValue : defaults.bool(forKey: key)
+            Self.persistedBool(key, default: defaultValue, in: defaults)
         }
 
         // Restore saved state. Preferences restore through the Published
@@ -2165,11 +2175,25 @@ final class BudgetStore: ObservableObject {
     private init(forPreview mode: PreviewMode) {
         switch mode {
         case .loadPersistedPreferences:
+            let defaults = UserDefaults.standard
             _categoryStatusDotColors = Published(
-                initialValue: Self.loadCategoryStatusDotColors(from: UserDefaults.standard)
+                initialValue: Self.loadCategoryStatusDotColors(from: defaults)
             )
             _hiddenBudgetProgressCategoryIDs = Published(
-                initialValue: Self.loadHiddenBudgetProgressCategoryIDs(from: UserDefaults.standard)
+                initialValue: Self.loadHiddenBudgetProgressCategoryIDs(from: defaults)
+            )
+            _showOverspentBadge = Published(
+                initialValue: Self.persistedBool("showOverspentBadge", default: true, in: defaults)
+            )
+            _showAppIconBadgeForUncategorizedTransactions = Published(
+                initialValue: Self.persistedBool(
+                    "showAppIconBadgeForUncategorizedTransactions", default: false, in: defaults
+                )
+            )
+            _showAppIconBadgeForOverspentCategories = Published(
+                initialValue: Self.persistedBool(
+                    "showAppIconBadgeForOverspentCategories", default: false, in: defaults
+                )
             )
         }
     }

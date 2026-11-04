@@ -217,7 +217,7 @@ struct TransactionAutomationSettingsView: View {
     }
 
     private func enableTransactionNotifications() async {
-        let granted = await (try? AppNotificationAuthorization.request()) ?? false
+        let granted = await (try? AppNotificationAuthorization.requestIfNeeded()) ?? false
         notificationPermissionDenied = !granted
     }
 

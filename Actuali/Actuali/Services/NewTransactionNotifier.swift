@@ -32,10 +32,19 @@ extension UNUserNotificationCenter: NotificationPosting {
 enum AppNotificationAuthorization {
     static let requestedOptions: UNAuthorizationOptions = [.alert, .sound, .badge]
 
-    static func request(
+    static func requestIfNeeded(
         using center: any NotificationPosting = UNUserNotificationCenter.current()
     ) async throws -> Bool {
-        try await center.requestAuthorization(options: requestedOptions)
+        switch await center.authorizationStatus() {
+        case .authorized, .provisional, .ephemeral:
+            return true
+        case .denied:
+            return false
+        case .notDetermined:
+            return try await center.requestAuthorization(options: requestedOptions)
+        @unknown default:
+            return false
+        }
     }
 }
 
@@ -88,7 +97,7 @@ enum NewTransactionNotifier {
 
         let granted: Bool
         do {
-            granted = try await AppNotificationAuthorization.request(using: center)
+            granted = try await AppNotificationAuthorization.requestIfNeeded(using: center)
         } catch {
             notifLog.error("Notification authorization failed: \(error.localizedDescription, privacy: .public)")
             return
