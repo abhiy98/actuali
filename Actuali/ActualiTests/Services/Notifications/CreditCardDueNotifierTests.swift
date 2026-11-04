@@ -387,6 +387,7 @@ private final class FakeCreditCardNotificationCenter: NotificationPosting, @unch
     var authorizationRequests = 0
     var failAdds = false
     var status: UNAuthorizationStatus = .notDetermined
+    var badgeStatus: UNNotificationSetting = .enabled
     var authorizationOptions: UNAuthorizationOptions?
     var added: [UNNotificationRequest] = []
     var badgeCounts: [Int] = []
@@ -394,6 +395,10 @@ private final class FakeCreditCardNotificationCenter: NotificationPosting, @unch
 
     func authorizationStatus() async -> UNAuthorizationStatus {
         status
+    }
+
+    func badgeSetting() async -> UNNotificationSetting {
+        badgeStatus
     }
 
     func requestAuthorization(options: UNAuthorizationOptions) async throws -> Bool {

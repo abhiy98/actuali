@@ -259,6 +259,15 @@ struct NewTransactionNotifierTests {
         #expect(center.badgeCounts == [0, 7])
     }
 
+    @Test func appIconBadgeUpdaterSkipsWhenBadgePermissionIsDisabled() async {
+        let center = NotificationCenterSpy()
+        center.badgeStatus = .disabled
+
+        await AppIconBadgeUpdater.update(7, using: center)
+
+        #expect(center.badgeCounts.isEmpty)
+    }
+
     @Test @MainActor func notifyPostsWhenNotificationsEnabled() async {
         let center = NotificationCenterSpy()
 
@@ -277,11 +286,16 @@ private final class NotificationCenterSpy: NotificationPosting, @unchecked Senda
     var authorizationRequests = 0
     var authorizationOptions: UNAuthorizationOptions?
     var status: UNAuthorizationStatus = .notDetermined
+    var badgeStatus: UNNotificationSetting = .enabled
     var added: [UNNotificationRequest] = []
     var badgeCounts: [Int] = []
 
     func authorizationStatus() async -> UNAuthorizationStatus {
         status
+    }
+
+    func badgeSetting() async -> UNNotificationSetting {
+        badgeStatus
     }
 
     func requestAuthorization(options: UNAuthorizationOptions) async throws -> Bool {

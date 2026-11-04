@@ -11,6 +11,8 @@ protocol NotificationPosting: Sendable {
     @concurrent
     func authorizationStatus() async -> UNAuthorizationStatus
     @concurrent
+    func badgeSetting() async -> UNNotificationSetting
+    @concurrent
     func requestAuthorization(options: UNAuthorizationOptions) async throws -> Bool
     @concurrent
     func setBadgeCount(_ count: Int) async throws
@@ -23,6 +25,11 @@ extension UNUserNotificationCenter: NotificationPosting {
     @concurrent
     func authorizationStatus() async -> UNAuthorizationStatus {
         await notificationSettings().authorizationStatus
+    }
+
+    @concurrent
+    func badgeSetting() async -> UNNotificationSetting {
+        await notificationSettings().badgeSetting
     }
 }
 
@@ -54,6 +61,8 @@ enum AppIconBadgeUpdater {
         _ count: Int,
         using center: any NotificationPosting = UNUserNotificationCenter.current()
     ) async {
+        guard await center.badgeSetting() == .enabled else { return }
+
         do {
             try await center.setBadgeCount(max(0, count))
         } catch {
