@@ -231,7 +231,7 @@ struct DisplaySettingsView: View {
         if settings.badgeSetting == .enabled {
             // The count may have been published before the permission prompt
             // completed, so publish it again once iOS confirms badge access.
-            try? await center.setBadgeCount(budgetStore.appIconBadgeCount)
+            await AppIconBadgeUpdater.update(budgetStore.appIconBadgeCount)
         } else {
             showsAppIconBadgePermissionAlert = true
         }
