@@ -66,4 +66,35 @@ struct BudgetStoreOverspentBadgeTests {
         let store = BudgetStore.previewInstance()
         #expect(store.showOverspentBadge)
     }
+
+    @Test func appIconBadgeAddsOnlyEnabledCounts() {
+        let store = BudgetStore.previewInstance()
+        store.uncategorizedCount = 4
+        store.currentBudgetMonth = makeMonth(availables: [-100, 500, -1])
+        store.showOverspentBadge = false
+        store.showAppIconBadgeForUncategorizedTransactions = true
+        store.showAppIconBadgeForOverspentCategories = true
+
+        #expect(store.appIconBadgeCount == 6)
+
+        store.showAppIconBadgeForOverspentCategories = false
+        #expect(store.appIconBadgeCount == 4)
+
+        store.showAppIconBadgeForUncategorizedTransactions = false
+        store.showAppIconBadgeForOverspentCategories = true
+        #expect(store.appIconBadgeCount == 2)
+
+        store.showAppIconBadgeForOverspentCategories = false
+        #expect(store.appIconBadgeCount == 0)
+    }
+
+    @Test func appIconBadgePreferencesDefaultToOff() {
+        let defaults = UserDefaults.standard
+        defaults.removeObject(forKey: "showAppIconBadgeForUncategorizedTransactions")
+        defaults.removeObject(forKey: "showAppIconBadgeForOverspentCategories")
+
+        let store = BudgetStore.previewInstance()
+        #expect(!store.showAppIconBadgeForUncategorizedTransactions)
+        #expect(!store.showAppIconBadgeForOverspentCategories)
+    }
 }

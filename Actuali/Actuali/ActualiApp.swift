@@ -157,6 +157,11 @@ struct ActualiApp: App {
                 }
                 #endif
             }
+            .onChange(of: budgetStore.appIconBadgeCount, initial: true) { _, count in
+                Task {
+                    try? await UNUserNotificationCenter.current().setBadgeCount(count)
+                }
+            }
             .onChange(of: scenePhase) { oldPhase, newPhase in
                 if newPhase == .active, oldPhase != .active {
                     // Submitting here as well as on backgrounding covers a
@@ -165,6 +170,9 @@ struct ActualiApp: App {
                     // submit just replaces the pending request.
                     BackgroundRefresh.schedule()
                     Task {
+                        try? await UNUserNotificationCenter.current().setBadgeCount(
+                            budgetStore.appIconBadgeCount
+                        )
                         await budgetStore.syncOnForeground()
                     }
                 }

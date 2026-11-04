@@ -52,6 +52,21 @@ final class SettingsNavigationUITests: XCTestCase {
             content.waitForExistence(timeout: 5),
             "\(destination) opened without its expected content"
         )
+
+        if destination == "Display" {
+            for identifier in [
+                "displaySettings.appIconBadge.uncategorizedTransactions",
+                "displaySettings.appIconBadge.overspentCategories",
+            ] {
+                let toggle = app.switches[identifier]
+                var swipes = 0
+                while !toggle.exists && swipes < 4 {
+                    app.swipeUp()
+                    swipes += 1
+                }
+                XCTAssertTrue(toggle.waitForExistence(timeout: 5), "Missing Display toggle: \(identifier)")
+            }
+        }
     }
 
     @MainActor

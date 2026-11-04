@@ -851,6 +851,28 @@ final class BudgetStore: ObservableObject {
         }
     }
 
+    /// Whether uncategorized transactions contribute to the app icon badge.
+    /// Opt-in because this count appears outside the app, on the Home Screen.
+    @Published var showAppIconBadgeForUncategorizedTransactions: Bool = false {
+        didSet {
+            UserDefaults.standard.set(
+                showAppIconBadgeForUncategorizedTransactions,
+                forKey: "showAppIconBadgeForUncategorizedTransactions"
+            )
+        }
+    }
+
+    /// Whether overspent categories contribute to the app icon badge.
+    /// Independent of the Budget tab's own overspent badge preference.
+    @Published var showAppIconBadgeForOverspentCategories: Bool = false {
+        didSet {
+            UserDefaults.standard.set(
+                showAppIconBadgeForOverspentCategories,
+                forKey: "showAppIconBadgeForOverspentCategories"
+            )
+        }
+    }
+
     /// Whether the Budget tab leaves out the Income group. The summary card
     /// still shows income. Persisted to UserDefaults, defaults to off.
     @Published var hideIncomeGroup: Bool = false {
@@ -1084,6 +1106,16 @@ final class BudgetStore: ObservableObject {
     /// categories, or 0 when the badge is turned off in Settings.
     var overspentBadgeCount: Int {
         showOverspentBadge ? (currentBudgetMonth?.overspentCount ?? 0) : 0
+    }
+
+    /// The Home Screen badge adds the selected counts. The overspent source
+    /// follows the same month as the Budget tab's existing overspent count.
+    var appIconBadgeCount: Int {
+        let uncategorized = showAppIconBadgeForUncategorizedTransactions
+            ? max(0, uncategorizedCount) : 0
+        let overspent = showAppIconBadgeForOverspentCategories
+            ? max(0, currentBudgetMonth?.overspentCount ?? 0) : 0
+        return uncategorized + overspent
     }
 
     // MARK: - User Preferences (per-budget, stored in UserDefaults)
@@ -2046,6 +2078,12 @@ final class BudgetStore: ObservableObject {
         )
         _showOverspentBadge = Published(
             initialValue: persistedBool("showOverspentBadge", default: true)
+        )
+        _showAppIconBadgeForUncategorizedTransactions = Published(
+            initialValue: persistedBool("showAppIconBadgeForUncategorizedTransactions", default: false)
+        )
+        _showAppIconBadgeForOverspentCategories = Published(
+            initialValue: persistedBool("showAppIconBadgeForOverspentCategories", default: false)
         )
         _hideIncomeGroup = Published(
             initialValue: persistedBool("hideIncomeGroup", default: false)

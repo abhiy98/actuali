@@ -1,4 +1,6 @@
 import SwiftUI
+import UIKit
+import UserNotifications
 
 struct DisplaySettingsLoadRequest: Equatable {
     let budgetID: String?
@@ -80,6 +82,7 @@ struct DisplaySettingsView: View {
     @EnvironmentObject private var budgetStore: BudgetStore
     @Environment(\.locale) private var locale
     @State private var dashboardPages: [DashboardPage] = []
+    @State private var showsAppIconBadgePermissionAlert = false
 
     /// Routes the picker's selection through `setCurrencyCode`, which
     /// persists the choice into the budget's own `preferences` table (not
@@ -149,6 +152,34 @@ struct DisplaySettingsView: View {
             }
 
             Section {
+                Toggle("Uncategorized Transactions", isOn: Binding(
+                    get: { budgetStore.showAppIconBadgeForUncategorizedTransactions },
+                    set: { enabled in
+                        budgetStore.showAppIconBadgeForUncategorizedTransactions = enabled
+                        if enabled {
+                            Task { await requestAppIconBadgeAuthorization() }
+                        }
+                    }
+                ))
+                .accessibilityIdentifier("displaySettings.appIconBadge.uncategorizedTransactions")
+
+                Toggle("Overspent Categories", isOn: Binding(
+                    get: { budgetStore.showAppIconBadgeForOverspentCategories },
+                    set: { enabled in
+                        budgetStore.showAppIconBadgeForOverspentCategories = enabled
+                        if enabled {
+                            Task { await requestAppIconBadgeAuthorization() }
+                        }
+                    }
+                ))
+                .accessibilityIdentifier("displaySettings.appIconBadge.overspentCategories")
+            } header: {
+                Text("App Icon Badge")
+            } footer: {
+                Text("The app icon displays the combined count of the selected items. Enable Badges for Actuali in iOS Settings to show it.")
+            }
+
+            Section {
                 Picker("Start Page", selection: $budgetStore.startTab) {
                     ForEach(StartTab.allCases) { tab in
                         Text(tab.label(locale: locale)).tag(tab)
@@ -176,8 +207,33 @@ struct DisplaySettingsView: View {
         .navigationTitle("Display")
         .navigationBarTitleDisplayMode(.inline)
         .contentMargins(.horizontal, 6, for: .scrollContent)
+        .alert("Allow App Icon Badges", isPresented: $showsAppIconBadgePermissionAlert) {
+            Button("Open Settings") {
+                guard let settingsURL = URL(string: UIApplication.openSettingsURLString) else { return }
+                UIApplication.shared.open(settingsURL)
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("Actuali needs permission to show badges. In iOS Settings, go to Notifications > Actuali and turn on Badges.")
+        }
         .task(id: currentLoadRequest) { [request = currentLoadRequest] in
             await reloadDashboardPages(request: request)
+        }
+    }
+
+    private func requestAppIconBadgeAuthorization() async {
+        let center = UNUserNotificationCenter.current()
+        var settings = await center.notificationSettings()
+        if settings.badgeSetting == .notDetermined {
+            _ = try? await center.requestAuthorization(options: [.badge])
+            settings = await center.notificationSettings()
+        }
+        if settings.badgeSetting == .enabled {
+            // The count may have been published before the permission prompt
+            // completed, so publish it again once iOS confirms badge access.
+            try? await center.setBadgeCount(budgetStore.appIconBadgeCount)
+        } else {
+            showsAppIconBadgePermissionAlert = true
         }
     }
 
