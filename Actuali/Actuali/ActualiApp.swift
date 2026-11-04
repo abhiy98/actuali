@@ -159,7 +159,7 @@ struct ActualiApp: App {
             }
             .onChange(of: budgetStore.appIconBadgeCount, initial: true) { _, count in
                 Task {
-                    try? await UNUserNotificationCenter.current().setBadgeCount(count)
+                    await AppIconBadgeUpdater.update(count)
                 }
             }
             .onChange(of: scenePhase) { oldPhase, newPhase in
@@ -170,9 +170,7 @@ struct ActualiApp: App {
                     // submit just replaces the pending request.
                     BackgroundRefresh.schedule()
                     Task {
-                        try? await UNUserNotificationCenter.current().setBadgeCount(
-                            budgetStore.appIconBadgeCount
-                        )
+                        await AppIconBadgeUpdater.update(budgetStore.appIconBadgeCount)
                         await budgetStore.syncOnForeground()
                     }
                 }

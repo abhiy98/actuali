@@ -13,6 +13,8 @@ protocol NotificationPosting: Sendable {
     @concurrent
     func requestAuthorization(options: UNAuthorizationOptions) async throws -> Bool
     @concurrent
+    func setBadgeCount(_ count: Int) async throws
+    @concurrent
     func add(_ request: UNNotificationRequest) async throws
     func removePendingNotificationRequests(withIdentifiers identifiers: [String])
 }
@@ -21,6 +23,33 @@ extension UNUserNotificationCenter: NotificationPosting {
     @concurrent
     func authorizationStatus() async -> UNAuthorizationStatus {
         await notificationSettings().authorizationStatus
+    }
+}
+
+/// One first-time permission request for every notification feature. iOS
+/// stores this decision for the app, so separate requests cannot produce
+/// separate prompts for alerts, sounds, and badges.
+enum AppNotificationAuthorization {
+    static let requestedOptions: UNAuthorizationOptions = [.alert, .sound, .badge]
+
+    static func request(
+        using center: any NotificationPosting = UNUserNotificationCenter.current()
+    ) async throws -> Bool {
+        try await center.requestAuthorization(options: requestedOptions)
+    }
+}
+
+/// Updates the Home Screen badge from foreground changes and headless refreshes.
+enum AppIconBadgeUpdater {
+    static func update(
+        _ count: Int,
+        using center: any NotificationPosting = UNUserNotificationCenter.current()
+    ) async {
+        do {
+            try await center.setBadgeCount(max(0, count))
+        } catch {
+            notifLog.error("Failed to update app icon badge: \(error.localizedDescription, privacy: .public)")
+        }
     }
 }
 
@@ -59,7 +88,7 @@ enum NewTransactionNotifier {
 
         let granted: Bool
         do {
-            granted = try await center.requestAuthorization(options: [.alert, .sound])
+            granted = try await AppNotificationAuthorization.request(using: center)
         } catch {
             notifLog.error("Notification authorization failed: \(error.localizedDescription, privacy: .public)")
             return

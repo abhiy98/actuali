@@ -414,7 +414,7 @@ final class BudgetStore: ObservableObject {
     /// The current calendar month's budget, tracked separately from
     /// `currentBudgetMonth` (which follows whatever month BudgetView is
     /// browsing) so the widget never publishes historical balances.
-    var widgetBudgetMonth: BudgetMonth?
+    @Published var widgetBudgetMonth: BudgetMonth?
 
     /// Where publishWidgetSnapshot() writes; injectable for tests. nil when
     /// the build's provisioning lacks the app group.
@@ -1114,7 +1114,7 @@ final class BudgetStore: ObservableObject {
         let uncategorized = showAppIconBadgeForUncategorizedTransactions
             ? max(0, uncategorizedCount) : 0
         let overspent = showAppIconBadgeForOverspentCategories
-            ? max(0, currentBudgetMonth?.overspentCount ?? 0) : 0
+            ? max(0, widgetBudgetMonth?.overspentCount ?? 0) : 0
         return uncategorized + overspent
     }
 
@@ -3170,6 +3170,7 @@ final class BudgetStore: ObservableObject {
         }
 
         isLoading = false
+        await AppIconBadgeUpdater.update(appIconBadgeCount)
     }
 
     /// Seed the version-gated write flags from the last cached answer for the
@@ -3414,6 +3415,7 @@ final class BudgetStore: ObservableObject {
             dataVersion += 1
             isPublishingReload = false
             publishWidgetSnapshot()
+            await AppIconBadgeUpdater.update(appIconBadgeCount)
             await scheduleCreditCardDueNotifications()
         } catch is CancellationError {
             // The caller's task was cancelled (e.g. a .refreshable task the

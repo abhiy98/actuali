@@ -30,7 +30,7 @@ enum TransactionLogNotifier {
 
         let granted: Bool
         do {
-            granted = try await center.requestAuthorization(options: [.alert, .sound])
+            granted = try await AppNotificationAuthorization.request(using: center)
         } catch {
             notifLog.error("Notification authorization failed: \(error.localizedDescription, privacy: .public)")
             return
@@ -71,7 +71,7 @@ enum TransactionLogNotifier {
         // banner-visible error so the user isn't left in the dark.
         let granted: Bool
         do {
-            granted = try await center.requestAuthorization(options: [.alert, .sound])
+            granted = try await AppNotificationAuthorization.request(using: center)
         } catch {
             notifLog.error("Notification authorization failed: \(error.localizedDescription, privacy: .public)")
             return

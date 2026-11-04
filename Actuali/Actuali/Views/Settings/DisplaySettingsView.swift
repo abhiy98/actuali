@@ -225,7 +225,7 @@ struct DisplaySettingsView: View {
         let center = UNUserNotificationCenter.current()
         var settings = await center.notificationSettings()
         if settings.badgeSetting == .notDetermined {
-            _ = try? await center.requestAuthorization(options: [.badge])
+            _ = try? await AppNotificationAuthorization.request()
             settings = await center.notificationSettings()
         }
         if settings.badgeSetting == .enabled {
