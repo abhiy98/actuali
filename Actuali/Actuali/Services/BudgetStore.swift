@@ -1108,8 +1108,8 @@ final class BudgetStore: ObservableObject {
         showOverspentBadge ? (currentBudgetMonth?.overspentCount ?? 0) : 0
     }
 
-    /// The Home Screen badge adds the selected counts. The overspent source
-    /// follows the same month as the Budget tab's existing overspent count.
+    /// The Home Screen badge adds the selected counts. Overspending always
+    /// comes from the calendar month, not the month currently browsed in Budget.
     var appIconBadgeCount: Int {
         let uncategorized = showAppIconBadgeForUncategorizedTransactions
             ? max(0, uncategorizedCount) : 0
@@ -3194,7 +3194,7 @@ final class BudgetStore: ObservableObject {
         }
 
         isLoading = false
-        await AppIconBadgeUpdater.update(appIconBadgeCount)
+        await AppIconBadgeUpdater.shared.update(appIconBadgeCount)
     }
 
     /// Seed the version-gated write flags from the last cached answer for the
@@ -3439,7 +3439,7 @@ final class BudgetStore: ObservableObject {
             dataVersion += 1
             isPublishingReload = false
             publishWidgetSnapshot()
-            await AppIconBadgeUpdater.update(appIconBadgeCount)
+            await AppIconBadgeUpdater.shared.update(appIconBadgeCount)
             await scheduleCreditCardDueNotifications()
         } catch is CancellationError {
             // The caller's task was cancelled (e.g. a .refreshable task the

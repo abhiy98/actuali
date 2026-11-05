@@ -157,9 +157,11 @@ struct ActualiApp: App {
                 }
                 #endif
             }
-            .onChange(of: budgetStore.appIconBadgeCount, initial: true) { _, count in
+            .onChange(of: budgetStore.appIconBadgeCount, initial: true) { _, _ in
                 Task {
-                    await AppIconBadgeUpdater.update(count)
+                    // Read when the task runs: a delayed task must not submit
+                    // the count captured before a newer store update.
+                    await AppIconBadgeUpdater.shared.update(budgetStore.appIconBadgeCount)
                 }
             }
             .onChange(of: scenePhase) { oldPhase, newPhase in

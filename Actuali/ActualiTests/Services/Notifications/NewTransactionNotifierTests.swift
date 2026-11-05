@@ -251,10 +251,11 @@ struct NewTransactionNotifierTests {
     }
 
     @Test func appIconBadgeUpdaterClampsNegativeCountsToZero() async {
+        let updater = AppIconBadgeUpdater()
         let center = NotificationCenterSpy()
 
-        await AppIconBadgeUpdater.update(-7, using: center)
-        await AppIconBadgeUpdater.update(7, using: center)
+        await updater.update(-7, using: center)
+        await updater.update(7, using: center)
 
         #expect(center.badgeCounts == [0, 7])
     }
@@ -263,9 +264,29 @@ struct NewTransactionNotifierTests {
         let center = NotificationCenterSpy()
         center.badgeStatus = .disabled
 
-        await AppIconBadgeUpdater.update(7, using: center)
+        await updater.update(7, using: center)
 
         #expect(center.badgeCounts.isEmpty)
+    }
+
+
+    @Test func appIconBadgeUpdaterSerializesConcurrentWrites() async {
+        let updater = AppIconBadgeUpdater()
+        let center = DelayedBadgeNotificationCenter()
+
+        let firstUpdate = Task {
+            await updater.update(1, using: center)
+        }
+        await center.waitUntilFirstWriteStarts()
+
+        let secondUpdate = Task {
+            await updater.update(2, using: center)
+        }
+
+        await firstUpdate.value
+        await secondUpdate.value
+
+        #expect(await center.recordedBadgeCounts() == [1, 2])
     }
 
     @Test @MainActor func notifyPostsWhenNotificationsEnabled() async {
@@ -315,4 +336,67 @@ private final class NotificationCenterSpy: NotificationPosting, @unchecked Senda
     }
 
     func removePendingNotificationRequests(withIdentifiers identifiers: [String]) {}
+}
+
+private actor BadgeUpdateRecorder {
+    private var counts: [Int] = []
+    private var firstWriteStarted = false
+    private var firstWriteContinuation: CheckedContinuation<Void, Never>?
+
+    func markFirstWriteStarted() {
+        firstWriteStarted = true
+        firstWriteContinuation?.resume()
+        firstWriteContinuation = nil
+    }
+
+    func waitForFirstWrite() async {
+        guard !firstWriteStarted else { return }
+        await withCheckedContinuation { continuation in
+            firstWriteContinuation = continuation
+        }
+    }
+
+    func append(_ count: Int) {
+        counts.append(count)
+    }
+
+    func recordedCounts() -> [Int] {
+        counts
+    }
+}
+
+private final class DelayedBadgeNotificationCenter: NotificationPosting, @unchecked Sendable {
+    private let recorder = BadgeUpdateRecorder()
+
+    func authorizationStatus() async -> UNAuthorizationStatus {
+        .authorized
+    }
+
+    func badgeSetting() async -> UNNotificationSetting {
+        .enabled
+    }
+
+    func requestAuthorization(options: UNAuthorizationOptions) async throws -> Bool {
+        true
+    }
+
+    func setBadgeCount(_ count: Int) async throws {
+        if count == 1 {
+            await recorder.markFirstWriteStarted()
+            try await Task.sleep(nanoseconds: 250_000_000)
+        }
+        await recorder.append(count)
+    }
+
+    func add(_ request: UNNotificationRequest) async throws {}
+
+    func removePendingNotificationRequests(withIdentifiers identifiers: [String]) {}
+
+    func waitUntilFirstWriteStarts() async {
+        await recorder.waitForFirstWrite()
+    }
+
+    func recordedBadgeCounts() async -> [Int] {
+        await recorder.recordedCounts()
+    }
 }

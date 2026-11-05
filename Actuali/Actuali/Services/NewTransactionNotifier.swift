@@ -55,19 +55,41 @@ enum AppNotificationAuthorization {
     }
 }
 
-/// Updates the Home Screen badge from foreground changes and headless refreshes.
-enum AppIconBadgeUpdater {
-    static func update(
+/// Serializes Home Screen badge writes so an older async refresh cannot
+/// overwrite a newer count.
+actor AppIconBadgeUpdater {
+    static let shared = AppIconBadgeUpdater()
+
+    private var updateGeneration = 0
+    private var pendingUpdate: Task<Void, Never>?
+
+    func update(
         _ count: Int,
         using center: any NotificationPosting = UNUserNotificationCenter.current()
     ) async {
-        guard await center.badgeSetting() == .enabled else { return }
+        updateGeneration += 1
+        let generation = updateGeneration
+        let previousUpdate = pendingUpdate
+        let update = Task {
+            await previousUpdate?.value
 
-        do {
-            try await center.setBadgeCount(max(0, count))
-        } catch {
-            notifLog.error("Failed to update app icon badge: \(error.localizedDescription, privacy: .public)")
+            if await center.badgeSetting() == .enabled {
+                do {
+                    try await center.setBadgeCount(max(0, count))
+                } catch {
+                    notifLog.error("Failed to update app icon badge: \(error.localizedDescription, privacy: .public)")
+                }
+            }
+
+            finishUpdate(generation)
         }
+        pendingUpdate = update
+        await update.value
+    }
+
+    private func finishUpdate(_ generation: Int) {
+        guard generation == updateGeneration else { return }
+        pendingUpdate = nil
     }
 }
 

@@ -225,13 +225,15 @@ struct DisplaySettingsView: View {
         let center = UNUserNotificationCenter.current()
         var settings = await center.notificationSettings()
         if settings.badgeSetting == .notDetermined {
-            _ = try? await AppNotificationAuthorization.requestIfNeeded()
+            _ = try? await AppNotificationAuthorization.requestIfNeeded(using: center)
             settings = await center.notificationSettings()
         }
         if settings.badgeSetting == .enabled {
             // The count may have been published before the permission prompt
             // completed, so publish it again once iOS confirms badge access.
-            await AppIconBadgeUpdater.update(budgetStore.appIconBadgeCount)
+            await AppIconBadgeUpdater.shared.update(
+                budgetStore.appIconBadgeCount, using: center
+            )
         } else {
             showsAppIconBadgePermissionAlert = true
         }
