@@ -230,6 +230,29 @@ struct NewTransactionNotifierTests {
         #expect(center.authorizationOptions == nil)
     }
 
+    @Test func notificationPermissionReturnsTheInitialDenial() async throws {
+        let center = NotificationCenterSpy()
+        center.authorizationResult = false
+
+        let firstResult = try await AppNotificationAuthorization.requestIfNeeded(using: center)
+        let secondResult = try await AppNotificationAuthorization.requestIfNeeded(using: center)
+
+        #expect(!firstResult)
+        #expect(!secondResult)
+        #expect(center.authorizationOptions == [.alert, .sound, .badge])
+        #expect(center.authorizationRequests == 1)
+    }
+
+    @Test func ephemeralNotificationPermissionIsAlreadyGranted() async throws {
+        let center = NotificationCenterSpy()
+        center.status = .ephemeral
+
+        let granted = try await AppNotificationAuthorization.requestIfNeeded(using: center)
+
+        #expect(granted)
+        #expect(center.authorizationRequests == 0)
+    }
+
     @Test func notificationPermissionDoesNotRetryAfterDenial() async throws {
         let center = NotificationCenterSpy()
         center.status = .denied
@@ -258,6 +281,16 @@ struct NewTransactionNotifierTests {
         await updater.update(7, using: center)
 
         #expect(center.badgeCounts == [0, 7])
+    }
+
+    @Test func appIconBadgeUpdaterIgnoresSystemWriteFailures() async {
+        let updater = AppIconBadgeUpdater()
+        let center = NotificationCenterSpy()
+        center.failBadgeUpdates = true
+
+        await updater.update(3, using: center)
+
+        #expect(center.badgeCounts.isEmpty)
     }
 
     @Test func appIconBadgeUpdaterSkipsWhenBadgePermissionIsDisabled() async {
@@ -306,8 +339,10 @@ private final class NotificationCenterSpy: NotificationPosting, @unchecked Senda
     var authorizationRequested = false
     var authorizationRequests = 0
     var authorizationOptions: UNAuthorizationOptions?
+    var authorizationResult = true
     var status: UNAuthorizationStatus = .notDetermined
     var badgeStatus: UNNotificationSetting = .enabled
+    var failBadgeUpdates = false
     var added: [UNNotificationRequest] = []
     var badgeCounts: [Int] = []
 
@@ -323,11 +358,14 @@ private final class NotificationCenterSpy: NotificationPosting, @unchecked Senda
         authorizationRequested = true
         authorizationRequests += 1
         authorizationOptions = options
-        status = .authorized
-        return true
+        status = authorizationResult ? .authorized : .denied
+        return authorizationResult
     }
 
     func setBadgeCount(_ count: Int) async throws {
+        if failBadgeUpdates {
+            throw CocoaError(.fileWriteUnknown)
+        }
         badgeCounts.append(count)
     }
 
@@ -365,7 +403,7 @@ private actor BadgeUpdateRecorder {
     }
 }
 
-private final class DelayedBadgeNotificationCenter: NotificationPosting, @unchecked Sendable {
+private final class DelayedBadgeNotificationCenter: NotificationPosting {
     private let recorder = BadgeUpdateRecorder()
 
     func authorizationStatus() async -> UNAuthorizationStatus {
