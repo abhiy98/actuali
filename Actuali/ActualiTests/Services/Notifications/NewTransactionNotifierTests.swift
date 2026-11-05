@@ -300,8 +300,12 @@ struct NewTransactionNotifierTests {
         center.failBadgeUpdates = true
 
         await updater.update(3, using: center)
-
         #expect(center.badgeCounts.isEmpty)
+
+        // A failed write must not block later updates in the serialized queue.
+        center.failBadgeUpdates = false
+        await updater.update(4, using: center)
+        #expect(center.badgeCounts == [4])
     }
 
     @Test func appIconBadgeUpdaterSkipsWhenBadgePermissionIsDisabled() async {
