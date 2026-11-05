@@ -261,6 +261,7 @@ struct NewTransactionNotifierTests {
     }
 
     @Test func appIconBadgeUpdaterSkipsWhenBadgePermissionIsDisabled() async {
+        let updater = AppIconBadgeUpdater()
         let center = NotificationCenterSpy()
         center.badgeStatus = .disabled
 
@@ -268,7 +269,6 @@ struct NewTransactionNotifierTests {
 
         #expect(center.badgeCounts.isEmpty)
     }
-
 
     @Test func appIconBadgeUpdaterSerializesConcurrentWrites() async {
         let updater = AppIconBadgeUpdater()

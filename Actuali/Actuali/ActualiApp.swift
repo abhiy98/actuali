@@ -172,7 +172,7 @@ struct ActualiApp: App {
                     // submit just replaces the pending request.
                     BackgroundRefresh.schedule()
                     Task {
-                        await AppIconBadgeUpdater.update(budgetStore.appIconBadgeCount)
+                        await AppIconBadgeUpdater.shared.update(budgetStore.appIconBadgeCount)
                         await budgetStore.syncOnForeground()
                     }
                 }
