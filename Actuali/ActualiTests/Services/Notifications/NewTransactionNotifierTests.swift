@@ -230,6 +230,17 @@ struct NewTransactionNotifierTests {
         #expect(center.authorizationOptions == nil)
     }
 
+    @Test func authorizedNotificationsDoNotRequireBadgePermission() async throws {
+        let center = NotificationCenterSpy()
+        center.status = .authorized
+        center.badgeStatus = .disabled
+
+        let granted = try await AppNotificationAuthorization.requestIfNeeded(using: center)
+
+        #expect(granted)
+        #expect(center.authorizationRequests == 0)
+    }
+
     @Test func notificationPermissionReturnsTheInitialDenial() async throws {
         let center = NotificationCenterSpy()
         center.authorizationResult = false
