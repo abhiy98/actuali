@@ -6350,8 +6350,8 @@ final class BudgetStore: ObservableObject {
         /// when editing a parent; ignored otherwise (the view never sets it
         /// for the add flow or plain transactions).
         var collapseSplit: Bool = false
-        /// Per-save opt-out for payee location recording (GH #24). Defaults
-        /// on so Shortcuts and existing callers keep recording.
+        /// Per-save opt-out for new-transaction payee location recording
+        /// (GH #24). Defaults on for existing create callers; edits are excluded.
         var recordLocation: Bool = true
         var reviewConfirmations: Set<PendingImportReviewRequirement> = []
         /// True for a picker choice or prefill; false for payee-history suggestions.
@@ -6546,6 +6546,12 @@ final class BudgetStore: ObservableObject {
         newId: String? = nil,
         financialId: String? = nil
     ) async throws -> String? {
+        var form = form
+        form.recordLocation = Self.shouldRecordPayeeLocation(
+            recordLocation: form.recordLocation,
+            editing: original
+        )
+
         // New plain rows collect their target after resolving the payee and
         // applying rules in createTransaction; edits and splits skip rules.
         if original == nil, form.type != .transfer, form.splits.isEmpty {
@@ -7107,9 +7113,6 @@ final class BudgetStore: ObservableObject {
         }
 
         await refreshDataOnly()
-        if form.recordLocation, let payeeId {
-            recordPayeeLocationIfAppropriate(payeeId: payeeId)
-        }
     }
 
     /// Convert an ordinary transaction into one leg of a transfer (GH #259):
@@ -7299,9 +7302,6 @@ final class BudgetStore: ObservableObject {
         }
 
         await refreshDataOnly()
-        if form.recordLocation, let payeeId {
-            recordPayeeLocationIfAppropriate(payeeId: payeeId)
-        }
     }
 
     /// Collapse a split parent back into a single transaction (the edit
@@ -7362,9 +7362,6 @@ final class BudgetStore: ObservableObject {
         }
 
         await refreshDataOnly()
-        if form.recordLocation, let payeeId {
-            recordPayeeLocationIfAppropriate(payeeId: payeeId)
-        }
     }
 
     /// Payee id for a standard (non-transfer) save: an empty name clears the
@@ -7382,6 +7379,12 @@ final class BudgetStore: ObservableObject {
         } catch {
             throw BudgetStoreError.payeeCreationFailed(error.localizedDescription)
         }
+    }
+
+    /// A location describes where a new transaction happened, not where an
+    /// existing transaction happens to be edited later.
+    static func shouldRecordPayeeLocation(recordLocation: Bool, editing original: Transaction?) -> Bool {
+        recordLocation && original == nil
     }
 
     /// Record only when no existing location for the payee is within 500 m

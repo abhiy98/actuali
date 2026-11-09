@@ -135,6 +135,17 @@ struct BudgetStoreSaveTransactionTests {
         #expect(store.payees.count == 2)
     }
 
+    // MARK: - Payee location capture
+
+    @Test func payeeLocationRecordingIsLimitedToNewTransactions() {
+        let original = transaction(payeeId: "p-1", payeeName: "Grocer")
+
+        #expect(BudgetStore.shouldRecordPayeeLocation(recordLocation: true, editing: nil))
+        #expect(!BudgetStore.shouldRecordPayeeLocation(recordLocation: false, editing: nil))
+        #expect(!BudgetStore.shouldRecordPayeeLocation(recordLocation: true, editing: original))
+        #expect(!BudgetStore.shouldRecordPayeeLocation(recordLocation: false, editing: original))
+    }
+
     // MARK: - End-to-end save (create and edit)
 
     @Test func savingANewTransactionPersistsRowAndReturnsCreatedID() async throws {
