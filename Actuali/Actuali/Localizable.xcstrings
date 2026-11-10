@@ -91990,6 +91990,53 @@
           }
         }
       }
+    },
+    "Pin All Accounts Summary" : {
+      "comment" : "Menu option that keeps the All Accounts summary at the top instead of scrolling with the account list.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Alle-Konten-Übersicht anheften"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pin All Accounts Summary"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fijar el resumen de todas las cuentas"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Épingler le récapitulatif de tous les comptes"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fissa il riepilogo di tutti i conti"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Samenvatting van alle rekeningen vastzetten"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fixar o resumo de todas as contas"
+          }
+        }
+      }
     }
   },
   "version" : "1.0"

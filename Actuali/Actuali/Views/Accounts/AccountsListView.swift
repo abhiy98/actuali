@@ -88,6 +88,7 @@ struct AccountsListView: View {
     @State private var showingAccountGroups = false
     @State private var isReordering = false
     @AppStorage("accountsCollapsedAccountGroupIDs") private var collapsedAccountGroupIDs = ""
+    @AppStorage("accountsSummaryPinned") private var isAccountsSummaryPinned = true
     @State private var accountGroupBackgroundOverrides: [String: Bool] = [:]
     @State private var pendingAccountGroupTransitions: Set<String> = []
     @State private var showingCreditCards = false
@@ -102,6 +103,10 @@ struct AccountsListView: View {
     /// This month's money in and out, for the summary card. nil until the
     /// first fetch lands.
     @State private var monthSummary: AccountsMonthTotals?
+    /// How far the List itself insets a row from its leading edge, measured
+    /// from the unpinned summary row so it can be padded to match the pinned one.
+    @State private var summaryRowInset: CGFloat = 0
+    private static let listSpace = "accountsList"
     @State private var accountSearchText = ""
     @State private var isAccountSearchActive = false
     @FocusState private var isAccountSearchFocused: Bool
@@ -483,8 +488,21 @@ struct AccountsListView: View {
                     emptyState
                 } else {
                     List {
-                        if !filteredOnBudgetAccounts.isEmpty {
+                        if !isAccountsSummaryPinned, !isSearchingAccounts {
                             Section {
+                                accountsSummary {
+                                    Button { path.append(.allAccounts) } label: { allAccountsCard }
+                                }
+                                .listRowInsets(EdgeInsets())
+                                .listRowSeparator(.hidden)
+                                .listRowBackground(Color.clear)
+                                .moveDisabled(true)
+                            }
+                            .listSectionSpacing(.custom(TopBoxLayout.verticalContentMargin * 2))
+                            .listSectionSeparator(.hidden)
+                        }
+                        if !filteredOnBudgetAccounts.isEmpty {
+                            budgetSection {
                                 if isOnBudgetExpanded || isSearchingAccounts || isReordering {
                                     let rows = accountListRows(for: onBudgetBuckets)
                                     ForEach(rows) { row in
@@ -492,7 +510,7 @@ struct AccountsListView: View {
                                     }
                                     .onMove(perform: moveRow(in: rows))
                                 }
-                            } header: {
+                            } bar: {
                                 AccountSectionHeader(
                                     identifier: "on-budget",
                                     title: String(localized: "On Budget"),
@@ -502,10 +520,9 @@ struct AccountsListView: View {
                                     onShowTransactions: { path.append(.onBudgetTransactions) }
                                 )
                             }
-                            .listSectionSeparator(.hidden)
                         }
                         if !filteredOffBudgetAccounts.isEmpty {
-                            Section {
+                            budgetSection {
                                 if isOffBudgetExpanded || isSearchingAccounts || isReordering {
                                     let rows = accountListRows(for: offBudgetBuckets)
                                     ForEach(rows) { row in
@@ -513,7 +530,7 @@ struct AccountsListView: View {
                                     }
                                     .onMove(perform: moveRow(in: rows))
                                 }
-                            } header: {
+                            } bar: {
                                 AccountSectionHeader(
                                     identifier: "off-budget",
                                     title: String(localized: "Off Budget"),
@@ -523,10 +540,9 @@ struct AccountsListView: View {
                                     onShowTransactions: { path.append(.offBudgetTransactions) }
                                 )
                             }
-                            .listSectionSeparator(.hidden)
                         }
                         if !filteredClosedAccounts.isEmpty {
-                            Section {
+                            budgetSection(hidesSectionSeparator: false) {
                                 if isClosedExpanded || isSearchingAccounts {
                                     ForEach(Array(filteredClosedAccounts.enumerated()), id: \.element.id) { offset, account in
                                         NavigationLink(value: AccountsRoute.account(account)) {
@@ -535,7 +551,7 @@ struct AccountsListView: View {
                                         .listRowBackground(closedRowBackground(at: offset))
                                     }
                                 }
-                            } header: {
+                            } bar: {
                                 AccountSectionHeader(
                                     identifier: "closed",
                                     title: String(localized: "Closed Accounts"),
@@ -556,9 +572,12 @@ struct AccountsListView: View {
                     )
                     .environment(\.editMode, .constant(isReordering ? .active : .inactive))
                     .pinnedSectionHeaders()
+                    .coordinateSpace(name: Self.listSpace)
                     .safeAreaInset(edge: .top, spacing: 0) {
-                        pinnedSummary {
-                            NavigationLink(value: AccountsRoute.allAccounts) { allAccountsCard }
+                        if isAccountsSummaryPinned {
+                            accountsSummary {
+                                Button { path.append(.allAccounts) } label: { allAccountsCard }
+                            }
                         }
                     }
                     // Capped like the transactions this pushes to, so a
@@ -587,8 +606,21 @@ struct AccountsListView: View {
                     emptyState
                 } else {
                     List(selection: $selection) {
-                        if !filteredOnBudgetAccounts.isEmpty {
+                        if !isAccountsSummaryPinned, !isSearchingAccounts {
                             Section {
+                                accountsSummary {
+                                    Button { selection = .allAccounts } label: { allAccountsCard }
+                                }
+                                .listRowInsets(EdgeInsets())
+                                .listRowSeparator(.hidden)
+                                .listRowBackground(Color.clear)
+                                .moveDisabled(true)
+                            }
+                            .listSectionSpacing(.custom(TopBoxLayout.verticalContentMargin * 2))
+                            .listSectionSeparator(.hidden)
+                        }
+                        if !filteredOnBudgetAccounts.isEmpty {
+                            budgetSection {
                                 if isOnBudgetExpanded || isSearchingAccounts || isReordering {
                                     let rows = accountListRows(for: onBudgetBuckets)
                                     ForEach(rows) { row in
@@ -596,7 +628,7 @@ struct AccountsListView: View {
                                     }
                                     .onMove(perform: moveRow(in: rows))
                                 }
-                            } header: {
+                            } bar: {
                                 AccountSectionHeader(
                                     identifier: "on-budget",
                                     title: String(localized: "On Budget"),
@@ -606,10 +638,9 @@ struct AccountsListView: View {
                                     onShowTransactions: { selection = .onBudgetTransactions }
                                 )
                             }
-                            .listSectionSeparator(.hidden)
                         }
                         if !filteredOffBudgetAccounts.isEmpty {
-                            Section {
+                            budgetSection {
                                 if isOffBudgetExpanded || isSearchingAccounts || isReordering {
                                     let rows = accountListRows(for: offBudgetBuckets)
                                     ForEach(rows) { row in
@@ -617,7 +648,7 @@ struct AccountsListView: View {
                                     }
                                     .onMove(perform: moveRow(in: rows))
                                 }
-                            } header: {
+                            } bar: {
                                 AccountSectionHeader(
                                     identifier: "off-budget",
                                     title: String(localized: "Off Budget"),
@@ -627,10 +658,9 @@ struct AccountsListView: View {
                                     onShowTransactions: { selection = .offBudgetTransactions }
                                 )
                             }
-                            .listSectionSeparator(.hidden)
                         }
                         if !filteredClosedAccounts.isEmpty {
-                            Section {
+                            budgetSection(hidesSectionSeparator: false) {
                                 if isClosedExpanded || isSearchingAccounts {
                                     ForEach(Array(filteredClosedAccounts.enumerated()), id: \.element.id) { offset, account in
                                         AccountRow(account: account)
@@ -638,7 +668,7 @@ struct AccountsListView: View {
                                             .listRowBackground(closedRowBackground(at: offset))
                                     }
                                 }
-                            } header: {
+                            } bar: {
                                 AccountSectionHeader(
                                     identifier: "closed",
                                     title: String(localized: "Closed Accounts"),
@@ -659,9 +689,12 @@ struct AccountsListView: View {
                     )
                     .environment(\.editMode, .constant(isReordering ? .active : .inactive))
                     .pinnedSectionHeaders()
+                    .coordinateSpace(name: Self.listSpace)
                     .safeAreaInset(edge: .top, spacing: 0) {
-                        pinnedSummary {
-                            Button { selection = .allAccounts } label: { allAccountsCard }
+                        if isAccountsSummaryPinned {
+                            accountsSummary {
+                                Button { selection = .allAccounts } label: { allAccountsCard }
+                            }
                         }
                     }
                 }
@@ -720,30 +753,74 @@ struct AccountsListView: View {
 
     /// The card as Budget draws its summary, so the two tabs' summaries line up.
     private var allAccountsCard: some View {
-        AccountsSummaryCard(totalBalance: totalBalance, monthTotals: monthSummary)
-            .padding(.horizontal, 16)
-            .padding(.vertical, 8)
-            .background(
-                RoundedRectangle(cornerRadius: 24)
-                    .fill(Color(.secondarySystemGroupedBackground))
-            )
+        HStack(spacing: 12) {
+            AccountsSummaryCard(totalBalance: totalBalance, monthTotals: monthSummary)
+            Image(systemName: "chevron.right")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+                .accessibilityHidden(true)
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 8)
+        // A List row isn't stretched to the row width the way the pinned inset
+        // is, so the card asks for it itself and both placements match.
+        .frame(maxWidth: .infinity)
+        .background(
+            RoundedRectangle(cornerRadius: 24)
+                .fill(Color(.secondarySystemGroupedBackground))
+        )
     }
 
-    /// Kept outside the List so it stays put while the accounts scroll, like
-    /// the Budget summary (GH #155). Hidden while searching, as the in-list
-    /// row was.
+    /// Shared presentation for the pinned inset and the scrollable List row.
+    /// The two live in different containers, so each makes up what the other
+    /// gets for free: the List row measures its own system inset and pads only
+    /// the difference, and skips the bottom gutter because the gap before the
+    /// next section already supplies it.
     @ViewBuilder
-    private func pinnedSummary(@ViewBuilder _ link: () -> some View) -> some View {
+    private func accountsSummary(@ViewBuilder _ link: () -> some View) -> some View {
         if !isSearchingAccounts {
             link()
                 .buttonStyle(.plain)
+                .padding(.horizontal, max(0, sideMargin - (isAccountsSummaryPinned ? 0 : summaryRowInset)))
                 .accessibilityIdentifier("accounts.topBox")
-                .padding(.horizontal, sideMargin)
                 .padding(.top, TopBoxLayout.verticalContentMargin)
                 // Twice the top gutter: the room the later section bars get
                 // from the gap between sections, so On Budget isn't squat.
-                .padding(.bottom, TopBoxLayout.verticalContentMargin * 2)
+                .padding(.bottom, isAccountsSummaryPinned ? TopBoxLayout.verticalContentMargin * 2 : 0)
                 .background(Color(.systemGroupedBackground).ignoresSafeArea())
+                .background {
+                    if !isAccountsSummaryPinned {
+                        GeometryReader { proxy in
+                            Color.clear.onChange(
+                                of: proxy.frame(in: .named(Self.listSpace)).minX,
+                                initial: true
+                            ) { _, x in
+                                summaryRowInset = x
+                            }
+                        }
+                    }
+                }
+        }
+    }
+
+    /// One budget section of the list. Pinned, its bar is the Section header
+    /// and sticks to the top while scrolling; unpinned, the bar is the
+    /// section's first row, so it scrolls away with the content.
+    @ViewBuilder
+    private func budgetSection(
+        hidesSectionSeparator: Bool = true,
+        @ViewBuilder rows: () -> some View,
+        @ViewBuilder bar: () -> some View
+    ) -> some View {
+        if isAccountsSummaryPinned {
+            Section { rows() } header: { bar() }
+                .listSectionSeparator(hidesSectionSeparator ? .hidden : .automatic)
+        } else {
+            Section {
+                bar().moveDisabled(true)
+                rows()
+            }
+            .listSectionSeparator(hidesSectionSeparator ? .hidden : .automatic)
         }
     }
 
@@ -785,7 +862,7 @@ struct AccountsListView: View {
             )
             .contentMargins(
                 .top,
-                TopBoxLayout.verticalContentMargin,
+                isAccountsSummaryPinned ? TopBoxLayout.verticalContentMargin : 0,
                 for: .scrollContent
             )
             .overlay {
@@ -903,6 +980,10 @@ struct AccountsListView: View {
                             isClosedExpanded = false
                         }
                         .accessibilityIdentifier("accounts.collapseAll")
+                        Toggle(isOn: $isAccountsSummaryPinned) {
+                            Label(String(localized: "Pin All Accounts Summary"), systemImage: "pin")
+                        }
+                        .accessibilityIdentifier("accounts.pinSummary")
                         Divider()
                         Toggle(isOn: $budgetStore.hideClosedAccounts) {
                             Label(String(localized: "Hide Closed"), systemImage: "archivebox")
