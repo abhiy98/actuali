@@ -15,6 +15,10 @@ final class SettingsNavigationUITests: XCTestCase {
                 app.switches["notifications.creditCardDueReminders"].waitForExistence(timeout: 5),
                 "Credit Card Due Reminders should be available alongside transaction alerts"
             )
+            XCTAssertTrue(
+                app.switches["notifications.shortcutTransactionConfirmation"].waitForExistence(timeout: 5),
+                "Shortcut Transaction Confirmation should be available in Notifications"
+            )
         case "Display":
             content = app.buttons.matching(
                 NSPredicate(format: "label BEGINSWITH 'Currency'")
@@ -156,6 +160,53 @@ final class SettingsNavigationUITests: XCTestCase {
                       "Automations Editor should live in Transactions & Automation")
         assertNoNotificationToggles()
         return (goalTemplates, automationsEditor)
+    }
+
+    @MainActor
+    func testShortcutTransactionConfirmationTogglePersistsAcrossLaunches() {
+        let app = XCUIApplication()
+        let demoLaunchArguments = ["-loadDemoData", "-initialTab", "4"]
+        app.launchArguments = demoLaunchArguments + [
+            "-resetShortcutTransactionConfirmationForUITest",
+        ]
+        app.launch()
+
+        let settingsRow = rowOnHub("Notifications", in: app)
+        XCTAssertTrue(settingsRow.waitForExistence(timeout: 5))
+        settingsRow.tap()
+
+        let toggle = app.switches["notifications.shortcutTransactionConfirmation"]
+        XCTAssertTrue(toggle.waitForExistence(timeout: 5))
+        XCTAssertEqual(toggle.value as? String, "1", "The test fixture should start enabled")
+
+        // Only turn the setting off. Enabling it would open the system
+        // notification-permission prompt and make the test tap nondeterministic.
+        toggle.tap()
+        let disabledExpectation = XCTNSPredicateExpectation(
+            predicate: NSPredicate(format: "value == %@", "0"),
+            object: toggle
+        )
+        XCTAssertEqual(XCTWaiter.wait(for: [disabledExpectation], timeout: 5), .completed)
+        XCTAssertEqual(toggle.value as? String, "0")
+
+        app.terminate()
+        app.launchArguments = demoLaunchArguments
+        app.launch()
+
+        let reopenedSettingsRow = rowOnHub("Notifications", in: app)
+        XCTAssertTrue(reopenedSettingsRow.waitForExistence(timeout: 5))
+        reopenedSettingsRow.tap()
+
+        let reopenedToggle = app.switches["notifications.shortcutTransactionConfirmation"]
+        XCTAssertTrue(reopenedToggle.waitForExistence(timeout: 5))
+        XCTAssertEqual(reopenedToggle.value as? String, "0")
+
+        // Restore the default without changing the switch in-app (and thus
+        // without prompting for permission), so this UI test leaves no residue.
+        app.terminate()
+        app.launchArguments = ["-resetShortcutTransactionConfirmationForUITest"]
+        app.launch()
+        app.terminate()
     }
 
     @MainActor

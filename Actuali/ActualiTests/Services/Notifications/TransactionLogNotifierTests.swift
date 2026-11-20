@@ -1,6 +1,22 @@
 import Foundation
 import Testing
+import UserNotifications
 @testable import Actuali
+
+@MainActor
+private final class RecordingTransactionLogNotificationCenter: TransactionLogNotificationCenter {
+    private(set) var authorizationRequestCount = 0
+    private(set) var addedRequests: [UNNotificationRequest] = []
+
+    func requestAuthorization() async throws -> Bool {
+        authorizationRequestCount += 1
+        return true
+    }
+
+    func add(_ request: UNNotificationRequest) async throws {
+        addedRequests.append(request)
+    }
+}
 
 @MainActor
 struct TransactionLogNotifierTests {
@@ -8,6 +24,45 @@ struct TransactionLogNotifierTests {
     /// default, and symbol placement differs by locale (de_DE renders
     /// "12,50 €").
     private let enUS = Locale(identifier: "en_US")
+
+    private func makeSettings(showsSuccessNotification: Bool) -> TransactionLogNotificationSettings {
+        let name = "TransactionLogNotifierTests-\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: name)!
+        defaults.removePersistentDomain(forName: name)
+        var settings = TransactionLogNotificationSettings(defaults: defaults)
+        settings.showsSuccessNotification = showsSuccessNotification
+        return settings
+    }
+
+    @Test func disabledShortcutSuccessNotificationSkipsAuthorizationAndDelivery() async {
+        let center = RecordingTransactionLogNotificationCenter()
+
+        await TransactionLogNotifier.notifySuccess(
+            payee: "Coffee Shop",
+            amountCents: -450,
+            currencyCode: "USD",
+            settings: makeSettings(showsSuccessNotification: false),
+            notificationCenter: center
+        )
+
+        #expect(center.authorizationRequestCount == 0)
+        #expect(center.addedRequests.isEmpty)
+    }
+
+    @Test func enabledShortcutSuccessNotificationIsDelivered() async {
+        let center = RecordingTransactionLogNotificationCenter()
+
+        await TransactionLogNotifier.notifySuccess(
+            payee: "Coffee Shop",
+            amountCents: -450,
+            currencyCode: "USD",
+            settings: makeSettings(showsSuccessNotification: true),
+            notificationCenter: center
+        )
+
+        #expect(center.authorizationRequestCount == 1)
+        #expect(center.addedRequests.count == 1)
+    }
 
     @Test func composeFailureBodyUsesConfiguredCurrencyCode() {
         let bodyEUR = TransactionLogNotifier.composeBody(

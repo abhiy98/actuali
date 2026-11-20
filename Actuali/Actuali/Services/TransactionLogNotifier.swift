@@ -19,18 +19,41 @@ enum TransactionLoggedMarker {
 }
 
 @MainActor
+protocol TransactionLogNotificationCenter {
+    func requestAuthorization() async throws -> Bool
+    func add(_ request: UNNotificationRequest) async throws
+}
+
+@MainActor
+private struct SystemTransactionLogNotificationCenter: TransactionLogNotificationCenter {
+    private let center = UNUserNotificationCenter.current()
+
+    func requestAuthorization() async throws -> Bool {
+        try await center.requestAuthorization(options: [.alert, .sound])
+    }
+
+    func add(_ request: UNNotificationRequest) async throws {
+        try await center.add(request)
+    }
+}
+
+@MainActor
 enum TransactionLogNotifier {
     /// - Parameter synced: false when the row is written locally but hasn't
     ///   reached the server yet, which the banner says outright — otherwise the
     ///   transaction looks logged while the budget on the server is unchanged.
     static func notifySuccess(payee: String, amountCents: Int, currencyCode: String,
                               narrowSymbol: Bool = false, synced: Bool = true,
-                              numberFormat: ActualNumberFormat = .commaDot) async {
-        let center = UNUserNotificationCenter.current()
+                              numberFormat: ActualNumberFormat = .commaDot,
+                              settings: TransactionLogNotificationSettings = .init(),
+                              notificationCenter: (any TransactionLogNotificationCenter)? = nil) async {
+        guard settings.showsSuccessNotification else { return }
+
+        let center = notificationCenter ?? SystemTransactionLogNotificationCenter()
 
         let granted: Bool
         do {
-            granted = try await center.requestAuthorization(options: [.alert, .sound])
+            granted = try await center.requestAuthorization()
         } catch {
             notifLog.error("Notification authorization failed: \(error.localizedDescription, privacy: .public)")
             return
