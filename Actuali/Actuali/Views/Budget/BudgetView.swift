@@ -92,6 +92,8 @@ struct BudgetView: View {
     @State private var monthNoteMonth: String?
     @State private var editingMonthNote = false
     @State private var editingBudgetViewOptions = false
+    @State private var compactSummaryBottom: CGFloat?
+    @State private var compactHeaderPositions: [String: CGFloat] = [:]
 
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @Environment(\.isWideLayout) private var isWideLayout
@@ -145,6 +147,21 @@ struct BudgetView: View {
 
     private var isCompact: Bool {
         budgetStore.budgetDisplayStyle == .compact
+    }
+
+    private var touchingCompactHeaderID: String? {
+        CompactBudgetHeaderLayout.closestHeader(
+            to: compactSummaryBottom,
+            positions: compactHeaderPositions
+        )
+    }
+
+    private var compactJoinedHeaderGap: CGFloat? {
+        guard let id = touchingCompactHeaderID else { return nil }
+        return CompactBudgetHeaderLayout.gap(
+            headerMinY: compactHeaderPositions[id],
+            summaryBottom: compactSummaryBottom
+        )
     }
 
     /// Shape for the "N uncategorized" link's background, matching the shape
@@ -346,6 +363,8 @@ struct BudgetView: View {
             CompactBudgetGroupHeader(
                 name: group.name,
                 isCollapsed: isCollapsed,
+                groupID: group.id,
+                isTouchingSummary: touchingCompactHeaderID == group.id,
                 isHidden: group.isHidden,
                 onSetHidden: {
                     setCategoryGroupHidden(group.id, hidden: $0)
@@ -391,6 +410,8 @@ struct BudgetView: View {
         } header: {
             CompactIncomeGroupHeader(
                 name: header.name,
+                groupID: Self.incomeGroupCollapseID,
+                isTouchingSummary: touchingCompactHeaderID == Self.incomeGroupCollapseID,
                 isCollapsed: isCollapsed,
                 isHidden: header.isHidden,
                 onSetHidden: header.onSetHidden,
@@ -748,7 +769,8 @@ struct BudgetView: View {
                         CompactBudgetSummary(
                             budget: budget,
                             showsSpent: budgetStore.showCompactSpentColumn,
-                            showsBudgeted: budgetStore.showBudgetedAmounts
+                            showsBudgeted: budgetStore.showBudgetedAmounts,
+                            joinedHeaderGap: compactJoinedHeaderGap
                         )
                     }
                 }
@@ -785,6 +807,14 @@ struct BudgetView: View {
         // The budget table is a fixed grid of narrow amount columns;
         // stretched to iPad width it becomes a category name and its numbers
         // separated by a foot of nothing.
+        .onPreferenceChange(CompactBudgetSummaryBottomPreferenceKey.self) {
+            compactSummaryBottom = $0
+        }
+        .onPreferenceChange(CompactBudgetHeaderPositionsPreferenceKey.self) {
+            if compactHeaderPositions != $0 {
+                compactHeaderPositions = $0
+            }
+        }
         .readableWidth()
         .background(Color(.systemGroupedBackground).ignoresSafeArea())
     }

@@ -1,5 +1,53 @@
 import SwiftUI
 
+enum CompactBudgetHeaderLayout {
+    // The summary and List headers are hosted in separate scroll containers.
+    // Measure both in global coordinates so their positions are comparable.
+    // The List and fixed summary have a small hosting gap; measure its fill instead of painting a fixed strip.
+    static let contactTolerance: CGFloat = 12
+
+    static func touchesSummary(headerMinY: CGFloat, summaryBottom: CGFloat?) -> Bool {
+        guard let summaryBottom else { return false }
+        return headerMinY >= summaryBottom - 4 && headerMinY <= summaryBottom + contactTolerance
+    }
+
+    static func gap(headerMinY: CGFloat?, summaryBottom: CGFloat?) -> CGFloat? {
+        guard let headerMinY, let summaryBottom,
+              touchesSummary(headerMinY: headerMinY, summaryBottom: summaryBottom)
+        else { return nil }
+        return max(0, headerMinY - summaryBottom)
+    }
+
+    static func closestHeader(to summaryBottom: CGFloat?, positions: [String: CGFloat]) -> String? {
+        guard let summaryBottom else { return nil }
+        return positions
+            .filter { touchesSummary(headerMinY: $0.value, summaryBottom: summaryBottom) }
+            .min {
+                let first = abs($0.value - summaryBottom)
+                let second = abs($1.value - summaryBottom)
+                return first == second ? $0.key < $1.key : first < second
+            }?.key
+    }
+}
+
+struct CompactBudgetHeaderPositionsPreferenceKey: PreferenceKey {
+    static var defaultValue: [String: CGFloat] { [:] }
+
+    static func reduce(value: inout [String: CGFloat], nextValue: () -> [String: CGFloat]) {
+        value.merge(nextValue(), uniquingKeysWith: { _, newest in newest })
+    }
+}
+
+struct CompactBudgetSummaryBottomPreferenceKey: PreferenceKey {
+    static var defaultValue: CGFloat? { nil }
+
+    static func reduce(value: inout CGFloat?, nextValue: () -> CGFloat?) {
+        if let next = nextValue() {
+            value = next
+        }
+    }
+}
+
 struct CompactBudgetSummary: View {
     @EnvironmentObject private var budgetStore: BudgetStore
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
@@ -8,6 +56,7 @@ struct CompactBudgetSummary: View {
     let budget: BudgetMonth
     let showsSpent: Bool
     let showsBudgeted: Bool
+    var joinedHeaderGap: CGFloat?
 
     private var overview: CompactBudgetOverview {
         CompactBudgetOverview(
@@ -76,11 +125,39 @@ struct CompactBudgetSummary: View {
                 }
             }
         }
-        .padding(.horizontal, 16)
+        .padding(.horizontal, 8)
         .padding(.vertical, 8)
-        .background(Color(.secondarySystemBackground))
+        .background {
+            UnevenRoundedRectangle(
+                cornerRadii: RectangleCornerRadii(
+                    topLeading: 10,
+                    bottomLeading: joinedHeaderGap != nil ? 0 : 10,
+                    bottomTrailing: joinedHeaderGap != nil ? 0 : 10,
+                    topTrailing: 10
+                ),
+                style: .continuous
+            )
+            .fill(Color(.secondarySystemBackground))
+        }
         .overlay(alignment: .bottom) {
-            Divider()
+            if joinedHeaderGap != nil {
+                Divider()
+            }
+        }
+        .background(alignment: .bottom) {
+            if joinedHeaderGap != nil {
+                Color(.secondarySystemBackground)
+                    .frame(height: joinedHeaderGap ?? 0)
+                    .offset(y: joinedHeaderGap ?? 0)
+            }
+        }
+        .background(alignment: .top) {
+            GeometryReader { geometry in
+                Color.clear.preference(
+                    key: CompactBudgetSummaryBottomPreferenceKey.self,
+                    value: geometry.frame(in: .global).maxY
+                )
+            }
         }
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier(
@@ -187,6 +264,8 @@ struct CompactBudgetGroupHeader: View {
 
     let name: String
     let isCollapsed: Bool
+    var groupID = ""
+    var isTouchingSummary = false
     var isHidden = false
     var onSetHidden: ((Bool) -> Void)?
     var onRename: (() -> Void)?
@@ -230,7 +309,27 @@ struct CompactBudgetGroupHeader: View {
         let actions = menuActions
         headerContent
             .foregroundStyle(.primary)
-            .background(Color(.secondarySystemBackground))
+            .padding(.horizontal, 8)
+            .background {
+                UnevenRoundedRectangle(
+                    cornerRadii: RectangleCornerRadii(
+                        topLeading: isTouchingSummary ? 0 : 10,
+                        bottomLeading: 10,
+                        bottomTrailing: 10,
+                        topTrailing: isTouchingSummary ? 0 : 10
+                    ),
+                    style: .continuous
+                )
+                .fill(Color(.secondarySystemBackground))
+            }
+            .background(alignment: .top) {
+                GeometryReader { geometry in
+                    Color.clear.preference(
+                        key: CompactBudgetHeaderPositionsPreferenceKey.self,
+                        value: [groupID: geometry.frame(in: .global).minY]
+                    )
+                }
+            }
             .opacity(isLifted ? 0 : isHidden ? 0.5 : 1)
             .overlay {
                 ContextMenuHost(actions: actions, onTap: onToggleCollapse, onLift: { isLifted = $0 })
@@ -303,7 +402,7 @@ struct CompactBudgetGroupHeader: View {
                 }
             }
         }
-        .padding(.horizontal, 16)
+        .padding(.horizontal, 8)
         .padding(.vertical, 8)
         .frame(maxWidth: .infinity, alignment: .leading)
         .contentShape(Rectangle())
@@ -579,6 +678,8 @@ struct CompactIncomeGroupHeader: View {
     @State private var isLifted = false
 
     let name: String
+    var groupID = ""
+    var isTouchingSummary = false
     var isCollapsed = false
     var isHidden = false
     var onSetHidden: ((Bool) -> Void)?
@@ -619,7 +720,27 @@ struct CompactIncomeGroupHeader: View {
         let actions = menuActions
         headerContent
             .foregroundStyle(.primary)
-            .background(Color(.secondarySystemBackground))
+            .padding(.horizontal, 8)
+            .background {
+                UnevenRoundedRectangle(
+                    cornerRadii: RectangleCornerRadii(
+                        topLeading: isTouchingSummary ? 0 : 10,
+                        bottomLeading: 10,
+                        bottomTrailing: 10,
+                        topTrailing: isTouchingSummary ? 0 : 10
+                    ),
+                    style: .continuous
+                )
+                .fill(Color(.secondarySystemBackground))
+            }
+            .background(alignment: .top) {
+                GeometryReader { geometry in
+                    Color.clear.preference(
+                        key: CompactBudgetHeaderPositionsPreferenceKey.self,
+                        value: [groupID: geometry.frame(in: .global).minY]
+                    )
+                }
+            }
             .opacity(isLifted ? 0 : isHidden ? 0.5 : 1)
             .overlay {
                 ContextMenuHost(actions: actions, onTap: onToggleCollapse, onLift: { isLifted = $0 })
@@ -686,7 +807,7 @@ struct CompactIncomeGroupHeader: View {
                 }
             }
         }
-        .padding(.horizontal, 16)
+        .padding(.horizontal, 8)
         .padding(.vertical, 8)
         .frame(maxWidth: .infinity, alignment: .leading)
         .contentShape(Rectangle())

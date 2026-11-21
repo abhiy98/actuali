@@ -8,6 +8,27 @@ struct CompactBudgetPresentationTests {
         Bundle(identifier: "com.mfazz.ActualiOS")!
     }
 
+    @Test func compactHeaderContactUsesMeasuredGap() {
+        #expect(CompactBudgetHeaderLayout.touchesSummary(headerMinY: 100, summaryBottom: 100))
+        #expect(CompactBudgetHeaderLayout.touchesSummary(headerMinY: 108, summaryBottom: 100))
+        #expect(!CompactBudgetHeaderLayout.touchesSummary(headerMinY: 113, summaryBottom: 100))
+        #expect(!CompactBudgetHeaderLayout.touchesSummary(headerMinY: 95, summaryBottom: 100))
+        #expect(!CompactBudgetHeaderLayout.touchesSummary(headerMinY: 100, summaryBottom: nil))
+        #expect(CompactBudgetHeaderLayout.gap(headerMinY: 108, summaryBottom: 100) == 8)
+        #expect(CompactBudgetHeaderLayout.gap(headerMinY: 99, summaryBottom: 100) == 0)
+        #expect(CompactBudgetHeaderLayout.gap(headerMinY: 114, summaryBottom: 100) == nil)
+    }
+
+    @Test func closestCompactHeaderReevaluatesWhenSummaryMoves() {
+        let positions = ["a": CGFloat(100), "b": CGFloat(140)]
+        #expect(CompactBudgetHeaderLayout.closestHeader(to: 100, positions: positions) == "a")
+        #expect(CompactBudgetHeaderLayout.closestHeader(to: 140, positions: positions) == "b")
+        #expect(CompactBudgetHeaderLayout.closestHeader(to: 120, positions: positions) == nil)
+        #expect(CompactBudgetHeaderLayout.closestHeader(to: nil, positions: positions) == nil)
+        #expect(CompactBudgetHeaderLayout.closestHeader(to: 100, positions: ["b": 100, "a": 100]) == "a")
+        #expect(CompactBudgetHeaderLayout.closestHeader(to: 100, positions: [:]) == nil)
+    }
+
     @Test @MainActor func groupHeaderHeightDoesNotDependOnTotalsVisibility() throws {
         let store = BudgetStore.previewInstance()
         let totals = CategoryGroupTotals([
