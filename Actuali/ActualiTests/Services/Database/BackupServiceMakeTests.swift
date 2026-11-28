@@ -48,6 +48,13 @@ struct BackupServiceMakeTests {
         defer { cleanup(root) }
         try seedBudget(manager: manager, id: "b1")
 
+        let liveQueue = try DatabaseQueue(path: manager.databasePath(for: "b1").path)
+        try await liveQueue.write { db in
+            try db.execute(sql: "CREATE TABLE accounts (id TEXT PRIMARY KEY, last_reconciled TEXT)")
+            try db.execute(sql: "INSERT INTO accounts VALUES ('checking', '2026-08-12')")
+            try db.execute(sql: "INSERT INTO __migrations__ VALUES (1787013118118)")
+        }
+
         let service = BackupService(fileManager: manager)
         try await service.makeBackup(budgetId: "b1", database: nil)
 
@@ -73,11 +80,11 @@ struct BackupServiceMakeTests {
             #expect(crdtCount == 0)
             #expect(clockCount == 0)
             #expect(note == "original")
+            #expect(try String.fetchOne(db, sql: "SELECT last_reconciled FROM accounts WHERE id = 'checking'") == "2026-08-12")
             #expect(try Int64.fetchAll(db, sql: "SELECT id FROM __migrations__") == [1_548_957_970_627])
         }
 
         // The live db is untouched.
-        let liveQueue = try DatabaseQueue(path: manager.databasePath(for: "b1").path)
         let liveMessages = try await liveQueue.read {
             try Int.fetchOne($0, sql: "SELECT COUNT(*) FROM messages_crdt")
         }
@@ -86,7 +93,7 @@ struct BackupServiceMakeTests {
         let liveMigrations = try await liveQueue.read {
             try Int.fetchOne($0, sql: "SELECT COUNT(*) FROM __migrations__")
         }
-        #expect(liveMigrations == 2)
+        #expect(liveMigrations == 3)
 
         // Archived metadata is the verbatim live copy (groupId intact —
         // detachment happens on restore, not on backup).

@@ -1565,6 +1565,7 @@ struct AmountInputField: UIViewRepresentable {
     var onToggleSign: (@MainActor () -> Void)?
     /// Disables the keypad's ± while the caller's sign can't flip.
     var canToggleSign = true
+    var onEditingChanged: ((Bool) -> Void)?
 
     /// becomeFirstResponder is a no-op until the view joins a window, and
     /// during a sheet presentation that happens well after makeUIView —
@@ -1801,12 +1802,14 @@ struct AmountInputField: UIViewRepresentable {
         }
 
         func textFieldDidBeginEditing(_ textField: UITextField) {
+            parent.onEditingChanged?(true)
             DispatchQueue.main.async {
                 textField.selectAll(nil)
             }
         }
 
         func textFieldDidEndEditing(_ textField: UITextField) {
+            parent.onEditingChanged?(false)
             // Done, tapping away or dismissing the keyboard always leaves a
             // plain amount behind, never a half-finished expression.
             finalizeExpression()

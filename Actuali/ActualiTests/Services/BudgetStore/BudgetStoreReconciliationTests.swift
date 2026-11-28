@@ -222,12 +222,20 @@ struct BudgetStoreReconciliationTests {
         }
     }
 
+    private func insertAccount(_ url: URL) throws {
+        let queue = try DatabaseQueue(path: url.path)
+        try queue.write { db in
+            try db.execute(sql: "INSERT INTO accounts (id, name) VALUES ('acct-1', 'Checking')")
+        }
+    }
+
     // MARK: - Locking
 
     @Test func lockClearedTransactionsMarksClearedUnreconciledRowsOnly() async throws {
         let (database, url) = try await makeTestDatabase(TestSchema.core)
         defer { cleanup(url) }
         let store = try await makeTestStore(database: database)
+        try insertAccount(url)
 
         try insertRow(url, id: "cleared-1", amount: -500, cleared: true)
         try insertRow(url, id: "cleared-parent", amount: -1000, cleared: true, isParent: true)
@@ -237,7 +245,12 @@ struct BudgetStoreReconciliationTests {
         try insertRow(url, id: "other-account", acct: "acct-2", amount: -400, cleared: true)
         try insertRow(url, id: "deleted", amount: -100, cleared: true, tombstone: true)
 
-        let locked = await store.lockClearedTransactions(accountId: "acct-1")
+        let stale = await store.lockClearedTransactions(accountId: "acct-1", targetCents: -1700)
+        #expect(stale == nil)
+        #expect(try messages(url, column: "reconciled").isEmpty)
+        #expect(try messages(url, column: "last_reconciled").isEmpty)
+
+        let locked = await store.lockClearedTransactions(accountId: "acct-1", targetCents: -1800)
 
         #expect(locked == 3)
         for id in ["cleared-1", "cleared-parent", "cleared-child"] {
@@ -250,6 +263,10 @@ struct BudgetStoreReconciliationTests {
         }
         // One CRDT message per newly locked row, none for the pre-locked one.
         #expect(try messages(url, column: "reconciled").count == 3)
+        #expect(try messages(url, column: "last_reconciled").count == 1)
+
+        let noNewRows = await store.lockClearedTransactions(accountId: "acct-1", targetCents: -1800)
+        #expect(noNewRows == 0)
     }
 
     // MARK: - Adjustment transaction
@@ -258,14 +275,19 @@ struct BudgetStoreReconciliationTests {
         let (database, url) = try await makeTestDatabase(TestSchema.core)
         defer { cleanup(url) }
         let store = try await makeTestStore(database: database)
+        try insertAccount(url)
 
         try insertRow(url, id: "t1", amount: -12000, cleared: true)
         // Bank says -100.00, cleared balance is -120.00 → adjustment of +20.00.
         let created = await store.createReconciliationAdjustment(
-            accountId: "acct-1", amountCents: 2000
+            accountId: "acct-1", targetCents: -10000, amountCents: 2000
         )
 
         #expect(created)
+        let repeated = await store.createReconciliationAdjustment(
+            accountId: "acct-1", targetCents: -10000, amountCents: 2000
+        )
+        #expect(!repeated)
         #expect(try await database.clearedBalance(accountId: "acct-1") == -10000)
 
         let queue = try DatabaseQueue(path: url.path)
@@ -281,5 +303,37 @@ struct BudgetStoreReconciliationTests {
         #expect(adjustment.cleared == 1)
         #expect(adjustment.reconciled == 0)
         #expect(adjustment.acct == "acct-1")
+    }
+
+    @Test(arguments: [
+        #"{"op":"set","field":"account","value":"acct-2"}"#,
+        #"{"op":"set","field":"amount","value":1000}"#,
+        #"{"op":"set","field":"cleared","value":false}"#,
+        #"{"op":"delete-transaction"}"#,
+    ])
+    func adjustmentRuleCannotPreventClearingTheDifference(action: String) async throws {
+        let (database, url) = try await makeTestDatabase(TestSchema.core + [TestSchema.rules])
+        defer { cleanup(url) }
+        let store = try await makeTestStore(database: database)
+        try insertAccount(url)
+        try insertRow(url, id: "t1", amount: -12000, cleared: true)
+        let queue = try DatabaseQueue(path: url.path)
+        try await queue.write { db in
+            try db.execute(sql: "INSERT INTO accounts (id, name) VALUES ('acct-2', 'Savings')")
+            try db.execute(
+                sql: "INSERT INTO rules (id, conditions, actions) VALUES ('adjustment-rule', ?, ?)",
+                arguments: [#"[{"op":"is","field":"account","value":"acct-1"}]"#, "[\(action)]"]
+            )
+        }
+
+        let created = await store.createReconciliationAdjustment(
+            accountId: "acct-1", targetCents: -10000, amountCents: 2000
+        )
+
+        #expect(!created)
+        #expect(store.error?.contains(SyncError.reconciliationAdjustmentBlockedByRule.localizedDescription) == true)
+        #expect(try await database.clearedBalance(accountId: "acct-1") == -12000)
+        #expect(try await queue.read { db in try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM transactions") } == 1)
+        #expect(try messages(url, column: "amount").isEmpty)
     }
 }

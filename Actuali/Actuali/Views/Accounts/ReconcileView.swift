@@ -1,143 +1,80 @@
 import SwiftUI
 
-/// Reconcile an account against the real bank balance, mirroring Actual's
-/// desktop flow: compare the entered bank balance to the account's cleared
-/// balance, offer a balance-adjustment transaction while they differ, and
-/// lock (mark reconciled) every cleared transaction once they match.
 struct ReconcileView: View {
-    @EnvironmentObject var budgetStore: BudgetStore
+    @EnvironmentObject private var budgetStore: BudgetStore
     @Environment(\.dismiss) private var dismiss
+
     let account: Account
+    let onReconcile: (Int) -> Void
 
     @State private var clearedBalance: Int?
     @State private var balanceText = ""
-    @State private var isWorking = false
+    @State private var isEditingBalance = false
+    @State private var loadFailed = false
 
-    /// The entered bank balance in cents, nil while unparseable. AmountParser
-    /// absorbs locale separators and currency symbols the same way the
-    /// Shortcuts path does.
     private var targetCents: Int? {
         guard let dollars = AmountParser.parse(balanceText) else { return nil }
         return Transaction.cents(fromDollars: dollars)
-    }
-
-    private var difference: Int? {
-        guard let clearedBalance, let targetCents else { return nil }
-        return targetCents - clearedBalance
-    }
-
-    /// Signed so a shortfall and a surplus read differently at a glance.
-    private func differenceText(_ cents: Int) -> String {
-        (cents > 0 ? "+" : "") + budgetStore.formatCurrency(cents)
-    }
-
-    /// Which of the mutually exclusive sections below the entry fields is
-    /// showing. The section swap is animated off this rather than off
-    /// `difference`, which recomputes on every keystroke — an implicit
-    /// animation above a live text field would re-fire per character typed.
-    private enum ComparisonSection: Equatable {
-        case none
-        case invalidAmount
-        case difference
-        case reconciled
-    }
-
-    private var comparisonSection: ComparisonSection {
-        guard let difference else {
-            return clearedBalance != nil && !balanceText.isEmpty ? .invalidAmount : .none
-        }
-        return difference == 0 ? .reconciled : .difference
     }
 
     var body: some View {
         NavigationStack {
             Form {
                 Section {
-                    HStack {
-                        Text(String(localized: "reconcile.clearedBalance"))
-                        Spacer()
+                    LabeledContent(String(localized: "reconcile.clearedBalance")) {
                         if let clearedBalance {
-                            // Deliberately bypasses the hide-balances mask:
-                            // comparing exact amounts against the bank is the
-                            // whole point of reconciling.
-                            let text = budgetStore.formatCurrency(clearedBalance)
-                            Text(text)
+                            Text(budgetStore.formatCurrency(clearedBalance))
                                 .fontWeight(.semibold)
-                                .animatedAmount(text)
-                        } else {
+                        } else if !loadFailed {
                             ProgressView()
                         }
                     }
-                    HStack {
-                        Text(String(localized: "reconcile.bankBalance"))
-                        Spacer()
-                        // Credit-card and overdrawn accounts reconcile against
-                        // a negative bank balance, so the sign toggle is needed.
+
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("reconcile.balancePrompt")
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                        Text("reconcile.bankBalance")
+                            .font(.subheadline.weight(.semibold))
                         AmountInputField(
                             text: $balanceText,
                             conventionalAmountEntry: budgetStore.conventionalAmountEntry,
                             alignment: .right,
                             allowsNegative: true,
-                            weight: .semibold
+                            weight: .semibold,
+                            onEditingChanged: { isEditingBalance = $0 }
                         )
-                    }
-                } footer: {
-                    Text(String(localized: "reconcile.balancePrompt"))
-                }
-
-                if let difference {
-                    if difference == 0 {
-                        Section {
-                            Label("All reconciled!", systemImage: "checkmark.circle.fill")
-                                .foregroundStyle(.green)
-                            Button {
-                                Task { await lock() }
-                            } label: {
-                                HStack {
-                                    Text("Lock Cleared Transactions")
-                                    if isWorking {
-                                        Spacer()
-                                        ProgressView()
-                                    }
-                                }
-                            }
-                            .disabled(isWorking)
-                        } footer: {
-                            Text("Locking marks every cleared transaction as reconciled so it can't be changed by accident.")
-                        }
-                    } else {
-                        Section {
-                            HStack {
-                                Text("Difference")
-                                Spacer()
-                                let text = differenceText(difference)
-                                Text(text)
-                                    .fontWeight(.semibold)
-                                    .foregroundStyle(.orange)
-                                    .animatedAmount(text)
-                            }
-                            Button {
-                                Task { await createAdjustment(difference) }
-                            } label: {
-                                Text("Create Adjustment Transaction")
-                            }
-                            .disabled(isWorking)
-                        } footer: {
-                            Text(String(format: String(localized: "Your cleared balance needs %@ to match the bank. The adjustment is a cleared transaction for that amount; you can lock afterwards."), budgetStore.formatCurrency(difference)))
+                        .accessibilityLabel(Text("reconcile.bankBalance"))
+                        .accessibilityIdentifier("reconcile.bankBalanceInput")
+                        .frame(minHeight: 44)
+                        .padding(.horizontal, 12)
+                        .background {
+                            RoundedRectangle(cornerRadius: 8)
+                                .strokeBorder(
+                                    isEditingBalance ? Color.accentColor : Color.secondary,
+                                    lineWidth: isEditingBalance ? 2 : 1
+                                )
                         }
                     }
-                } else if clearedBalance != nil, !balanceText.isEmpty {
-                    Section {
-                        Text("Enter a valid amount to compare balances.")
+                    if loadFailed {
+                        Button("Retry") {
+                            Task { await loadBalance() }
+                        }
+                    } else if !balanceText.isEmpty, targetCents == nil {
+                        Text("reconcile.invalidAmount")
                             .foregroundStyle(.secondary)
                     }
                 }
+                Section {
+                    Button("Reconcile") {
+                        guard let targetCents else { return }
+                        onReconcile(targetCents)
+                        dismiss()
+                    }
+                    .disabled(clearedBalance == nil || targetCents == nil)
+                    .accessibilityIdentifier("reconcile.submit")
+                }
             }
-            // The moment the numbers meet, the difference section gives way
-            // to "All reconciled!" — the one thing this screen exists to
-            // show. The difference figure itself rolls on its own curve via
-            // `animatedAmount`, so this only has to cover the swap.
-            .animation(AppAnimation.appearance, value: comparisonSection)
             .navigationTitle("Reconcile")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -145,50 +82,81 @@ struct ReconcileView: View {
                     Button("Cancel") { dismiss() }
                 }
             }
-            .task { await loadClearedBalance(prefill: true) }
+            .task { await loadBalance() }
         }
     }
 
-    private func loadClearedBalance(prefill: Bool) async {
-        clearedBalance = await budgetStore.clearedBalance(accountId: account.id)
-        if prefill, let clearedBalance, balanceText.isEmpty {
-            // Plain editable number, not the currency-formatted string — the
-            // field prefills to "already matches" like upstream's menu.
-            balanceText = String(format: "%.2f", Double(clearedBalance) / 100.0)
-        }
-    }
-
-    private func lock() async {
-        isWorking = true
-        defer { isWorking = false }
-        await budgetStore.lockClearedTransactions(accountId: account.id)
-        dismiss()
-    }
-
-    private func createAdjustment(_ diffCents: Int) async {
-        isWorking = true
-        defer { isWorking = false }
-        if await budgetStore.createReconciliationAdjustment(
-            accountId: account.id, amountCents: diffCents
-        ) {
-            // The cleared balance now includes the adjustment, so the
-            // difference collapses to zero and the lock action appears.
-            await loadClearedBalance(prefill: false)
+    private func loadBalance() async {
+        loadFailed = false
+        let balance = await budgetStore.clearedBalance(accountId: account.id)
+        guard !Task.isCancelled else { return }
+        clearedBalance = balance
+        loadFailed = balance == nil
+        if let balance, balanceText.isEmpty {
+            balanceText = AmountInputField.text(
+                for: Double(balance) / 100,
+                conventionalAmountEntry: budgetStore.conventionalAmountEntry
+            )
         }
     }
 }
 
-#Preview {
-    ReconcileView(
-        account: Account(
-            id: "1",
-            name: "Checking",
-            type: .checking,
-            offBudget: false,
-            closed: false,
-            sortOrder: 0,
-            balance: 245_073
-        )
-    )
-    .environmentObject(BudgetStore.previewInstance())
+struct ReconciliationBanner: View {
+    @EnvironmentObject private var budgetStore: BudgetStore
+
+    let bankBalance: Int
+    let clearedBalance: Int?
+    let isWorking: Bool
+    let onCreateAdjustment: (Int) -> Void
+    let onExit: () -> Void
+    let onLock: () -> Void
+
+    private var difference: Int? {
+        guard let clearedBalance else { return nil }
+        let (difference, overflow) = bankBalance.subtractingReportingOverflow(clearedBalance)
+        return overflow ? nil : difference
+    }
+
+    var body: some View {
+        VStack(spacing: 8) {
+            if let clearedBalance, let difference {
+                if difference == 0 {
+                    Label("All reconciled!", systemImage: "checkmark.circle.fill")
+                        .foregroundStyle(.green)
+                        .accessibilityIdentifier("reconcile.matched")
+                    Button("Lock Transactions", action: onLock)
+                        .buttonStyle(.borderedProminent)
+                        .accessibilityIdentifier("reconcile.lock")
+                } else {
+                    let cleared = budgetStore.formatCurrency(clearedBalance)
+                    let bank = budgetStore.formatCurrency(bankBalance)
+                    let signed = (difference > 0 ? "+" : "") + budgetStore.formatCurrency(difference)
+                    Text("Your cleared balance of \(cleared) needs \(signed) to match your bank balance of \(bank).")
+                        .multilineTextAlignment(.center)
+                        .accessibilityIdentifier("reconcile.differenceSummary")
+                    ViewThatFits(in: .horizontal) {
+                        HStack { unmatchedActions(difference) }
+                        VStack { unmatchedActions(difference) }
+                    }
+                }
+            } else {
+                Button("Exit Reconciliation", action: onExit)
+            }
+        }
+        .font(.subheadline)
+        .disabled(isWorking)
+        .frame(maxWidth: .infinity)
+        .padding(12)
+        .background(.regularMaterial)
+    }
+
+    @ViewBuilder
+    private func unmatchedActions(_ difference: Int) -> some View {
+        Button("Create Reconciliation Transaction") { onCreateAdjustment(difference) }
+            .buttonStyle(.bordered)
+            .accessibilityIdentifier("reconcile.createAdjustment")
+        Button("Exit Reconciliation", action: onExit)
+            .buttonStyle(.borderedProminent)
+            .accessibilityIdentifier("reconcile.exit")
+    }
 }

@@ -336,6 +336,8 @@ final class BudgetDatabase: Sendable {
          "ALTER TABLE accounts ADD COLUMN account_group_id TEXT DEFAULT NULL"),
         (1_780_606_215_004, "accounts", "last_sync", [],
          "ALTER TABLE accounts ADD COLUMN last_sync TEXT"),
+        (1_787_013_118_118, "accounts", "last_reconciled", ["tombstone"],
+         "ALTER TABLE accounts ADD COLUMN last_reconciled TEXT"),
     ]
 
     /// Tables added upstream after the original budget file was created. These run
@@ -484,6 +486,7 @@ final class BudgetDatabase: Sendable {
         1_780_606_215_004, // locally minted accounts.last_sync backfill
         1_787_013_118_116, // locally minted accounts.account_group_id backfill
         1_787_013_118_117, // locally minted one-off replay of stored messages into created tables
+        1_787_013_118_118, // accounts.last_reconciled for older budgets
         1_770_000_000_003, // defensive CREATE banks
         1_770_000_000_004, // defensive CREATE tags
         1_780_606_215_005, // device-local FinanceKit link identities
@@ -1419,17 +1422,39 @@ final class BudgetDatabase: Sendable {
     /// tombstoned parents excluded), narrowed to cleared rows.
     func clearedBalance(accountId: String) async throws -> Int {
         try await dbQueue.read { db in
-            try Int.fetchOne(db, sql: """
-            SELECT COALESCE(SUM(t.amount), 0)
-            FROM transactions t
-            LEFT JOIN transactions p ON p.id = t.parent_id
-            WHERE t.acct = ?
-              AND t.cleared = 1
-              AND t.date IS NOT NULL
-              AND (t.tombstone = 0 OR t.tombstone IS NULL)
-              AND \(Self.aliveChildPredicate(parent: "p"))
-              AND (t.isParent = 0 OR t.isParent IS NULL)
-            """, arguments: [accountId]) ?? 0
+            try Self.clearedBalance(db, accountId: accountId)
+        }
+    }
+
+    private static func clearedBalance(_ db: Database, accountId: String) throws -> Int {
+        try Int.fetchOne(db, sql: """
+        SELECT COALESCE(SUM(t.amount), 0)
+        FROM transactions t
+        LEFT JOIN transactions p ON p.id = t.parent_id
+        WHERE t.acct = ?
+          AND t.cleared = 1
+          AND t.date IS NOT NULL
+          AND (t.tombstone = 0 OR t.tombstone IS NULL)
+          AND \(aliveChildPredicate(parent: "p"))
+          AND (t.isParent = 0 OR t.isParent IS NULL)
+        """, arguments: [accountId]) ?? 0
+    }
+
+    enum ReconciliationWriteError: Error {
+        case staleBalance
+        case accountUnavailable
+    }
+
+    private static func validateReconciliation(
+        _ db: Database, accountId: String, expectedClearedBalance: Int
+    ) throws {
+        guard try Bool.fetchOne(db, sql: """
+        SELECT EXISTS(SELECT 1 FROM accounts WHERE id = ? AND COALESCE(tombstone, 0) = 0)
+        """, arguments: [accountId]) == true else {
+            throw ReconciliationWriteError.accountUnavailable
+        }
+        guard try clearedBalance(db, accountId: accountId) == expectedClearedBalance else {
+            throw ReconciliationWriteError.staleBalance
         }
     }
 
@@ -1579,52 +1604,42 @@ final class BudgetDatabase: Sendable {
         }
     }
 
-    /// Every live cleared-but-not-yet-reconciled row in an account — parents
-    /// and children included, because locking marks each stored row the way
-    /// upstream's ungrouped batch update does. No display joins: callers
-    /// write these rows back verbatim with only `reconciled` changed.
-    func fetchClearedUnreconciledTransactions(accountId: String) async throws -> [Transaction] {
+    /// Parents and children both lock, although only children count toward the balance.
+    func clearedUnreconciledIds(accountId: String) async throws -> Set<String> {
         try await dbQueue.read { db in
-            let rows = try Row.fetchAll(db, sql: """
-            SELECT
-                t.id, t.isParent, t.acct, t.category, t.amount,
-                t.description, t.notes, t.date, t.imported_description,
-                t.schedule,
-                t.transferred_id, t.cleared, t.reconciled, t.sort_order,
-                t.tombstone, t.parent_id
-            FROM transactions t
-            LEFT JOIN transactions p ON p.id = t.parent_id
-            WHERE t.acct = ?
-              AND t.cleared = 1
-              AND t.date IS NOT NULL
-              AND (t.reconciled = 0 OR t.reconciled IS NULL)
-              AND (t.tombstone = 0 OR t.tombstone IS NULL)
-              AND \(Self.aliveChildPredicate(parent: "p"))
-            ORDER BY t.date DESC, t.sort_order DESC
-            """, arguments: [accountId])
+            try Self.clearedUnreconciledIds(db, accountId: accountId)
+        }
+    }
 
-            return rows.map { row in
-                Transaction(
-                    id: row["id"],
-                    accountId: row["acct"] ?? "",
-                    date: row["date"] ?? 0,
-                    amount: row["amount"] ?? 0,
-                    payeeId: row["description"],
-                    payeeName: nil,
-                    categoryId: row["category"],
-                    categoryName: nil,
-                    notes: row["notes"],
-                    cleared: row["cleared"] == 1,
-                    reconciled: row["reconciled"] == 1,
-                    transferId: row["transferred_id"],
-                    isParent: row["isParent"] == 1,
-                    parentId: row["parent_id"],
-                    tombstone: row["tombstone"] == 1,
-                    sortOrder: row["sort_order"],
-                    importedPayee: row["imported_description"],
-                    schedule: row["schedule"]
-                )
+    private static func clearedUnreconciledIds(_ db: Database, accountId: String) throws -> Set<String> {
+        try Set(String.fetchAll(db, sql: """
+        SELECT t.id
+        FROM transactions t
+        LEFT JOIN transactions p ON p.id = t.parent_id
+        WHERE t.acct = ?
+          AND t.cleared = 1
+          AND t.date IS NOT NULL
+          AND (t.reconciled = 0 OR t.reconciled IS NULL)
+          AND (t.tombstone = 0 OR t.tombstone IS NULL)
+          AND \(aliveChildPredicate(parent: "p"))
+        """, arguments: [accountId]))
+    }
+
+    func lockReconciledTransactions(
+        accountId: String,
+        targetCents: Int,
+        transactionIds: Set<String>,
+        messages: [CRDTMessage]
+    ) throws -> [CRDTMessage] {
+        try dbQueue.write { db in
+            try Self.validateReconciliation(db, accountId: accountId, expectedClearedBalance: targetCents)
+            guard try Self.clearedUnreconciledIds(db, accountId: accountId) == transactionIds else {
+                throw ReconciliationWriteError.staleBalance
             }
+            // Apply only the reconciled flags and account timestamp. An edit
+            // to another field made while generating messages survives.
+            try Self.applyMessageRows(db, messages)
+            return try Self.insertMessageRows(db, messages)
         }
     }
 
@@ -3758,13 +3773,15 @@ final class BudgetDatabase: Sendable {
     func insertTransactionWithMessages(
         _ transaction: Transaction,
         messages: [CRDTMessage],
-        pendingPayees: [Payee] = []
+        pendingPayees: [Payee] = [],
+        expectedReconciliation: (accountId: String, clearedBalance: Int)? = nil
     ) throws -> [CRDTMessage] {
         try insertTransactionWithMessages(
             transaction,
             messages: messages,
             pendingPayees: pendingPayees,
-            financialIdPolicy: .unique
+            financialIdPolicy: .unique,
+            expectedReconciliation: expectedReconciliation
         )
     }
 
@@ -3795,9 +3812,17 @@ final class BudgetDatabase: Sendable {
         messages: [CRDTMessage],
         pendingPayees: [Payee],
         financialIdPolicy: FinancialIdPolicy,
-        expectedLink: ExpectedBankSyncLink? = nil
+        expectedLink: ExpectedBankSyncLink? = nil,
+        expectedReconciliation: (accountId: String, clearedBalance: Int)? = nil
     ) throws -> [CRDTMessage] {
         try dbQueue.write { db in
+            if let expectedReconciliation {
+                try Self.validateReconciliation(
+                    db,
+                    accountId: expectedReconciliation.accountId,
+                    expectedClearedBalance: expectedReconciliation.clearedBalance
+                )
+            }
             var insertedPendingPayees: [String: Payee] = [:]
             return try Self.insertBankSyncTransactionWithMessages(
                 db,
@@ -3823,44 +3848,41 @@ final class BudgetDatabase: Sendable {
         if let expectedLink {
             try requireBankSyncLink(db, expectedLink)
         }
-        guard let financialId = transaction.financialId else {
-            try Self.insertTransactionRow(db, transaction)
-            return try (true, Self.insertMessageRows(db, messages))
-        }
-
-        if let existing = try Row.fetchOne(db, sql: """
-        SELECT acct, tombstone FROM transactions
-        WHERE id = ? AND financial_id = ?
-        """, arguments: [transaction.id, financialId]) {
-            // A retry must not resurrect a deleted import or undo an account move.
-            guard existing["acct"] as String? == transaction.accountId,
-                  (existing["tombstone"] as Int? ?? 0) == 0 else { return (false, []) }
-            let columns = try Set(String.fetchAll(db, sql: """
-            SELECT column FROM messages_crdt
-            WHERE dataset = 'transactions' AND row = ?
-            """, arguments: [transaction.id]))
-            if columns.isEmpty {
-                try Self.applyMessageRows(db, messages)
-                return try (false, Self.insertMessageRows(db, messages))
+        if let financialId = transaction.financialId {
+            if let existing = try Row.fetchOne(db, sql: """
+            SELECT acct, tombstone FROM transactions
+            WHERE id = ? AND financial_id = ?
+            """, arguments: [transaction.id, financialId]) {
+                // A retry must not resurrect a deleted import or undo an account move.
+                guard existing["acct"] as String? == transaction.accountId,
+                      (existing["tombstone"] as Int? ?? 0) == 0 else { return (false, []) }
+                let columns = try Set(String.fetchAll(db, sql: """
+                SELECT column FROM messages_crdt
+                WHERE dataset = 'transactions' AND row = ?
+                """, arguments: [transaction.id]))
+                if columns.isEmpty {
+                    try Self.applyMessageRows(db, messages)
+                    return try (false, Self.insertMessageRows(db, messages))
+                }
+                if columns == Set(transaction.syncableFields.keys) {
+                    return (false, [])
+                }
+                throw TransactionWriteError.incompleteFinancialIdMessages
             }
-            if columns == Set(transaction.syncableFields.keys) {
+
+            let liveCount = try Int.fetchOne(db, sql: """
+            SELECT COUNT(*) FROM transactions
+            WHERE acct IS ? AND financial_id = ?
+                AND (tombstone = 0 OR tombstone IS NULL)
+            """, arguments: [transaction.accountId, financialId]) ?? 0
+            switch financialIdPolicy {
+            case .unique where liveCount > 0:
                 return (false, [])
+            case .occurrences(let limit) where liveCount >= limit:
+                return (false, [])
+            default:
+                break
             }
-            throw TransactionWriteError.incompleteFinancialIdMessages
-        }
-
-        let liveCount = try Int.fetchOne(db, sql: """
-        SELECT COUNT(*) FROM transactions
-        WHERE acct IS ? AND financial_id = ?
-            AND (tombstone = 0 OR tombstone IS NULL)
-        """, arguments: [transaction.accountId, financialId]) ?? 0
-        switch financialIdPolicy {
-        case .unique where liveCount > 0:
-            return (false, [])
-        case .occurrences(let limit) where liveCount >= limit:
-            return (false, [])
-        default:
-            break
         }
 
         for payee in pendingPayees {

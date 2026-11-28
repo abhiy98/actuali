@@ -17,6 +17,7 @@ enum SyncError: LocalizedError, Equatable {
     case notesTableMissing
     case rulesTableMissing
     case tagAlreadyExists
+    case reconciliationAdjustmentBlockedByRule
 
     var errorDescription: String? {
         switch self {
@@ -39,6 +40,8 @@ enum SyncError: LocalizedError, Equatable {
         case .tagAlreadyExists:
             // Reuses the existing `error.tagAlreadyExists` catalog entry (7 locales).
             String(localized: "error.tagAlreadyExists")
+        case .reconciliationAdjustmentBlockedByRule:
+            String(localized: "A transaction rule prevented this reconciliation adjustment.")
         }
     }
 }
@@ -251,7 +254,8 @@ actor SyncClient {
         applyRules: Bool = true,
         prepared: PreparedRules? = nil,
         preserveCategory: Bool = false,
-        resolvePayeeName: Bool = false
+        resolvePayeeName: Bool = false,
+        expectedReconciliationBalance: Int? = nil
     ) async throws -> TransactionCreateResult {
         var transaction = transaction
         var provisionalPayee: Payee?
@@ -275,7 +279,8 @@ actor SyncClient {
             preserveCategory: preserveCategory,
             financialIdPolicy: .unique,
             resolveOriginalBankPayee: false,
-            provisionalPayee: provisionalPayee
+            provisionalPayee: provisionalPayee,
+            expectedReconciliationBalance: expectedReconciliationBalance
         )
     }
 
@@ -385,7 +390,8 @@ actor SyncClient {
         financialIdPolicy: FinancialIdPolicy,
         resolveOriginalBankPayee: Bool,
         provisionalPayee: Payee? = nil,
-        expectedLink: ExpectedBankSyncLink? = nil
+        expectedLink: ExpectedBankSyncLink? = nil,
+        expectedReconciliationBalance: Int? = nil
     ) async throws -> TransactionCreateResult {
         guard let database else { throw SyncError.notConfigured }
 
@@ -405,6 +411,20 @@ actor SyncClient {
                 try await prepareRules()
             }
             let result = RulesEngine.apply(transaction, rules: preparedRules.rules, context: preparedRules.context)
+            finalTransaction = result.transaction
+
+            if expectedReconciliationBalance != nil {
+                guard !result.isDeleted,
+                      finalTransaction.accountId == transaction.accountId,
+                      finalTransaction.amount == transaction.amount,
+                      finalTransaction.cleared,
+                      !finalTransaction.reconciled,
+                      finalTransaction.parentId == nil,
+                      finalTransaction.transferId == nil
+                else {
+                    throw SyncError.reconciliationAdjustmentBlockedByRule
+                }
+            }
 
             if result.isDeleted {
                 // A `delete-transaction` rule matched. Upstream tombstones the
@@ -414,14 +434,13 @@ actor SyncClient {
                 return .suppressedByRule
             }
 
-            finalTransaction = result.transaction
             if preserveCategory {
                 finalTransaction.categoryId = transaction.categoryId
             }
             if let name = result.pendingPayeeName {
                 finalTransaction.payeeId = try await resolvePayee(
                     named: name,
-                    deferCreation: transaction.financialId != nil,
+                    deferCreation: transaction.financialId != nil || expectedReconciliationBalance != nil,
                     pendingPayees: &pendingPayees,
                     pendingPayeesByName: &pendingPayeesByName
                 )
@@ -464,7 +483,14 @@ actor SyncClient {
         // 2. Store the row and messages atomically. Financial-id retries can
         // repair a deterministic row that has no messages yet.
         let insertedMessages: [CRDTMessage]
-        if finalTransaction.financialId != nil {
+        if let expectedReconciliationBalance {
+            insertedMessages = try database.insertTransactionWithMessages(
+                finalTransaction,
+                messages: messages,
+                pendingPayees: pendingPayees,
+                expectedReconciliation: (transaction.accountId, expectedReconciliationBalance)
+            )
+        } else if finalTransaction.financialId != nil {
             switch financialIdPolicy {
             case .unique:
                 insertedMessages = try database.insertTransactionWithMessages(
@@ -496,7 +522,12 @@ actor SyncClient {
             merkle = merkle.inserting(msg.timestamp)
         }
         merkle = merkle.pruned()
-        try saveClock()
+        do {
+            try saveClock()
+        } catch {
+            guard expectedReconciliationBalance != nil else { throw error }
+            logger.error("Could not checkpoint reconciliation clock: \(error.localizedDescription, privacy: .public)")
+        }
         logger.debug("Messages stored, merkle updated (hash: \(self.merkle.root.hash, privacy: .public))")
 
         // 4. Push to the server in the background (never blocks the caller)
@@ -635,6 +666,37 @@ actor SyncClient {
 
         // 4. Push to the server in the background
         scheduleAutomaticSync()
+    }
+
+    func lockClearedTransactions(accountId: String, targetCents: Int) async throws -> Int {
+        guard let database else { throw SyncError.notConfigured }
+        let ids = try await database.clearedUnreconciledIds(accountId: accountId)
+        var messages: [CRDTMessage] = []
+        for id in ids.sorted() {
+            messages += try await messageGenerator.messages(
+                dataset: Transaction.datasetName, row: id, fields: [("reconciled", 1)]
+            )
+        }
+        let timestamp = String(Int64(Date().timeIntervalSince1970 * 1000))
+        messages += try await messageGenerator.messages(
+            dataset: Account.datasetName, row: accountId, fields: [("last_reconciled", timestamp)]
+        )
+        let inserted = try database.lockReconciledTransactions(
+            accountId: accountId, targetCents: targetCents, transactionIds: ids, messages: messages
+        )
+        for message in inserted {
+            merkle = merkle.inserting(message.timestamp)
+        }
+        merkle = merkle.pruned()
+        // The ledger and outbox have committed. A clock checkpoint failure
+        // must not offer a retry of an already committed reconciliation.
+        do {
+            try saveClock()
+        } catch {
+            logger.error("Could not checkpoint reconciliation clock: \(error.localizedDescription, privacy: .public)")
+        }
+        scheduleAutomaticSync()
+        return ids.count
     }
 
     /// Update many transactions that share one set of changed fields, in a

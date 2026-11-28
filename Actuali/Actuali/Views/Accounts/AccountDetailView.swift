@@ -34,6 +34,8 @@ struct AccountDetailView: View {
     @FocusState private var isTransactionSearchFocused: Bool
     @State private var showingAddTransaction = false
     @State private var showingReconcile = false
+    @State private var reconciliationTarget: Int?
+    @State private var isWritingReconciliation = false
     @State private var showingWalletImport = false
     @State private var editingTransaction: Transaction?
     /// The account's note (GH #198). Starts `.unsupported` so the menu item
@@ -1053,6 +1055,28 @@ struct AccountDetailView: View {
             } label: {
                 Label("Reconcile", systemImage: "lock.fill")
             }
+            .disabled(reconciliationTarget != nil || isWritingReconciliation)
+        }
+    }
+
+    private func writeReconciliation(target: Int, adjustment: Int? = nil) {
+        guard !isWritingReconciliation else { return }
+        isWritingReconciliation = true
+        let budgetId = budgetStore.currentBudgetId
+        Task {
+            defer { isWritingReconciliation = false }
+            guard budgetStore.currentBudgetId == budgetId, reconciliationTarget == target else { return }
+            if let adjustment {
+                await budgetStore.createReconciliationAdjustment(
+                    accountId: account.id,
+                    targetCents: target,
+                    amountCents: adjustment
+                )
+            } else if await budgetStore.lockClearedTransactions(accountId: account.id, targetCents: target) != nil,
+                      budgetStore.currentBudgetId == budgetId,
+                      reconciliationTarget == target {
+                reconciliationTarget = nil
+            }
         }
     }
 
@@ -1068,6 +1092,18 @@ struct AccountDetailView: View {
         // The header sections (balance, billing cycle, note) are one or two rows
         // each, so the stock inset-grouped gaps pushed the transactions off
         // screen. Tighter spacing top and between.
+        .safeAreaInset(edge: .top, spacing: 0) {
+            if let reconciliationTarget {
+                ReconciliationBanner(
+                    bankBalance: reconciliationTarget,
+                    clearedBalance: breakdown?.cleared,
+                    isWorking: isWritingReconciliation,
+                    onCreateAdjustment: { writeReconciliation(target: reconciliationTarget, adjustment: $0) },
+                    onExit: { self.reconciliationTarget = nil },
+                    onLock: { writeReconciliation(target: reconciliationTarget) }
+                )
+            }
+        }
         .contentMargins(.top, 8, for: .scrollContent)
         .listSectionSpacing(.compact)
         .readableWidth()
@@ -1172,8 +1208,10 @@ struct AccountDetailView: View {
             }
         }
         .sheet(isPresented: $showingReconcile) {
-            ReconcileView(account: account)
-                .environmentObject(budgetStore)
+            ReconcileView(account: account) { target in
+                reconciliationTarget = target
+            }
+            .environmentObject(budgetStore)
         }
         .sheet(isPresented: $showingWalletImport) {
             WalletImportView(preselectedAccountId: account.id)
@@ -1182,6 +1220,7 @@ struct AccountDetailView: View {
         .sheet(isPresented: $showingAddTransaction) {
             AddTransactionView(
                 accountId: account.id,
+                cleared: reconciliationTarget != nil,
                 onSaved: handleManualTransactionSaved
             )
             .environmentObject(budgetStore)
@@ -1206,7 +1245,16 @@ struct AccountDetailView: View {
             CreditCardStatementDetailView(account: account, statement: statement)
                 .environmentObject(budgetStore)
         }
+        .onDisappear {
+            reconciliationTarget = nil
+        }
+        .onChange(of: budgetStore.currentBudgetId) {
+            reconciliationTarget = nil
+            showingReconcile = false
+        }
         .onChange(of: account.id) {
+            reconciliationTarget = nil
+            showingReconcile = false
             // Search belongs to the selected account; don't carry a hidden filter
             // or an open search field into the next account in the iPad split view.
             isTransactionSearchActive = false

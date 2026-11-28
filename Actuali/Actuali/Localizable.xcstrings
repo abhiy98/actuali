@@ -13439,6 +13439,52 @@
         }
       }
     },
+    "A transaction rule prevented this reconciliation adjustment." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Eine Transaktionsregel hat diese Abgleichskorrektur verhindert."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "A transaction rule prevented this reconciliation adjustment."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Una regla de transacciones impidió este ajuste de conciliación."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Une règle de transaction a empêché cet ajustement de rapprochement."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Una regola di transazione ha impedito questa rettifica di riconciliazione."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Een transactieregel heeft deze afstemmingscorrectie verhinderd."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Uma regra de transação impediu este ajuste de conciliação."
+          }
+        }
+      }
+    },
     "A transaction rule suppressed this import, so it remains pending." : {
       "extractionState" : "stale",
       "localizations" : {
@@ -34125,6 +34171,52 @@
         }
       }
     },
+    "Create Reconciliation Transaction" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Abgleichstransaktion erstellen"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Create Reconciliation Transaction"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Crear transacción de conciliación"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Créer une transaction de rapprochement"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Crea transazione di riconciliazione"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Afstemmingstransactie aanmaken"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Criar transação de conciliação"
+          }
+        }
+      }
+    },
     "Create Rule" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -52987,6 +53079,52 @@
         }
       }
     },
+    "Lock Transactions" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Transaktionen sperren"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Lock Transactions"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bloquear transacciones"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Verrouiller les transactions"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Blocca transazioni"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Transacties vergrendelen"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bloquear transações"
+          }
+        }
+      }
+    },
     "Locking marks every cleared transaction as reconciled so it can't be changed by accident." : {
       "comment" : "Reconciliation explanation for locking cleared transactions",
       "extractionState" : "stale",
@@ -69302,6 +69440,52 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Manter fundos existentes acima do limite"
+          }
+        }
+      }
+    },
+    "Retry" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Erneut versuchen"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Retry"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Reintentar"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Réessayer"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Riprova"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Opnieuw proberen"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tentar novamente"
           }
         }
       }
@@ -91617,6 +91801,52 @@
         }
       }
     },
+    "Your cleared balance of %@ needs %@ to match your bank balance of %@." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zu Ihrem gebuchten Saldo von %@ fehlt %@, um Ihrem Banksaldo von %@ zu entsprechen."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Your cleared balance of %@ needs %@ to match your bank balance of %@."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "A tu saldo liquidado de %@ le faltan %@ para coincidir con tu saldo bancario de %@."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Votre solde pointé de %@ doit être ajusté de %@ pour correspondre à votre solde bancaire de %@."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Il tuo saldo contabilizzato di %@ deve variare di %@ per corrispondere al saldo bancario di %@."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Je afgeboekte saldo van %@ moet met %@ worden aangepast om overeen te komen met je banksaldo van %@."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Seu saldo compensado de %@ precisa de %@ para corresponder ao saldo bancário de %@."
+          }
+        }
+      }
+    },
     "Your current data is saved first so you can revert." : {
       "extractionState" : "stale",
       "localizations" : {
@@ -94450,6 +94680,52 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Privacidade: este relatório exclui credenciais, valores de cabeçalhos personalizados, identificadores de contas e orçamentos, endereços de servidores, conteúdo dos orçamentos, detalhes de transações e valores financeiros."
+          }
+        }
+      }
+    },
+    "Exit Reconciliation" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Abgleich beenden"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Exit Reconciliation"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Salir de la conciliación"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Quitter le rapprochement"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Esci dalla riconciliazione"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Afstemming afsluiten"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sair da conciliação"
           }
         }
       }

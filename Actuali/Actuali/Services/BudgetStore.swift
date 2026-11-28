@@ -7534,39 +7534,29 @@ final class BudgetStore: ObservableObject {
         )) ?? []
     }
 
-    /// Finish reconciling: lock every cleared, not-yet-reconciled transaction
-    /// in the account (reconciled = true), like upstream's lockTransactions.
-    /// Returns the number of rows locked; 0 with `error` set on failure.
-    @discardableResult
-    func lockClearedTransactions(accountId: String) async -> Int {
+    /// A nil result means no lock was committed. Zero is a successful match
+    /// with no new rows to lock.
+    func lockClearedTransactions(accountId: String, targetCents: Int) async -> Int? {
         do {
-            guard let database, let syncClient else {
-                throw BudgetStoreError.syncNotConfigured
-            }
-            let transactions = try await database.fetchClearedUnreconciledTransactions(
-                accountId: accountId
-            )
-            let locked = transactions.map { transaction in
-                var locked = transaction
-                locked.reconciled = true
-                return locked
-            }
-            try await syncClient.updateTransactions(locked, changedFields: ["reconciled"])
+            guard let syncClient else { throw BudgetStoreError.syncNotConfigured }
+            let count = try await syncClient.lockClearedTransactions(accountId: accountId, targetCents: targetCents)
             await refreshDataOnly()
-            return locked.count
+            return count
+        } catch BudgetDatabase.ReconciliationWriteError.staleBalance {
+            await refreshDataOnly()
+            return nil
         } catch {
             self.error = String(format: String(localized: "Failed to lock transactions: %@"), error.localizedDescription)
-            return 0
+            return nil
         }
     }
 
-    /// Create the balance-adjustment transaction reconciliation offers when
-    /// the cleared balance doesn't match the bank: a cleared, uncategorized
-    /// entry for the difference, same shape as upstream's. Returns false
-    /// with `error` set on failure.
     @discardableResult
-    func createReconciliationAdjustment(accountId: String, amountCents: Int) async -> Bool {
+    func createReconciliationAdjustment(accountId: String, targetCents: Int, amountCents: Int) async -> Bool {
         do {
+            guard let syncClient else { throw BudgetStoreError.syncNotConfigured }
+            let (expectedCleared, overflow) = targetCents.subtractingReportingOverflow(amountCents)
+            guard !overflow, amountCents != 0 else { return false }
             let adjustment = Transaction(
                 id: UUID().uuidString,
                 accountId: accountId,
@@ -7586,8 +7576,23 @@ final class BudgetStore: ObservableObject {
                 sortOrder: Date().timeIntervalSince1970 * 1000,
                 importedPayee: nil
             )
-            try await createTransaction(adjustment)
-            return true
+            let result = try await syncClient.createTransaction(
+                adjustment, expectedReconciliationBalance: expectedCleared
+            )
+            // Publish immediately for History, as on the manual create path.
+            if let database, let saved = try? await database.fetchTransaction(id: adjustment.id),
+               self.syncClient === syncClient {
+                transactions.removeAll { $0.id == saved.id }
+                transactions.append(saved)
+            }
+            await refreshDataOnly()
+            if case .inserted = result {
+                return true
+            }
+            return false
+        } catch BudgetDatabase.ReconciliationWriteError.staleBalance {
+            await refreshDataOnly()
+            return false
         } catch {
             self.error = String(format: String(localized: "Failed to create adjustment: %@"), error.localizedDescription)
             return false
